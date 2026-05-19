@@ -838,10 +838,6 @@ def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.02):
         fault_rate_list = [0.5, 0.8]
         percent_visible_states_list = [20, 40, 60, 80, 100]
 
-        fault_rate_list = [0.8]
-        percent_visible_states_list = [80]
-
-
         for percent_visible_states in percent_visible_states_list:
             for fault_rate in fault_rate_list:
 
