@@ -1,10 +1,19 @@
 import math
+import random
 from datetime import datetime
 
+import h_rl_models
+from frozen_lake_random_envs import load_pairs_from_json, print_map_and_policy
 from h_fault_model_generator import FaultModelGeneratorDiscrete
+from h_wrappers import DOMAIN_KWARGS
 from p_diagnosers import diagnosers
 from p_executor import execute_manual
-from p_pipeline import run_SIF_single_experiment, run_SN_single_experiment, run_W_single_experiment, run_SIFU_single_experiment, run_SIFU2_single_experiment, run_SIFU3_single_experiment, run_SIFU4_single_experiment, run_SIFU5_single_experiment, run_SIFU6_single_experiment, run_SIFU7_single_experiment, run_SIFU8_single_experiment, separate_trajectory, calculate_largest_hidden_gap, mask_states, rank_diagnoses_WFM, rank_diagnoses_SFM, prepare_record, write_records_to_excel
+from p_pipeline import run_SIF_single_experiment, run_SN_single_experiment, run_W_single_experiment, \
+    run_SIFU_single_experiment, run_SIFU2_single_experiment, run_SIFU3_single_experiment, run_SIFU4_single_experiment, \
+    run_SIFU5_single_experiment, run_SIFU6_single_experiment, run_SIFU7_single_experiment, run_SIFU8_single_experiment, \
+    separate_trajectory, calculate_largest_hidden_gap, mask_states, rank_diagnoses_WFM, rank_diagnoses_SFM, \
+    prepare_record, write_records_to_excel, exper_100_write_records_to_excel, run_NON_DETERMINSTIC_single_experiment_FO, \
+    exper_write_records_to_excel_ind, run_NON_DETERMINSTIC_single_experiment_PO
 
 
 # =================================================================================================
@@ -307,6 +316,852 @@ def single_experiment_Acrobot_SN():
         print(math.floor(e))
     print(f'avg duration in ms: {math.floor(sum(diagnosis_runtimes_ms) / len(diagnosis_runtimes_ms))}')
 
+import math
+import numpy as np
+import matplotlib.pyplot as plt
+
+def _extract_T_and_rank(records):
+    """Return list of (T_steps, rank) for valid records."""
+    out = []
+    for r in records:
+        rank = r.get("real_fault_rank", None)
+        obs_len = r.get("observations_len", None)
+        if rank is None or obs_len is None:
+            continue
+        T = int(obs_len) - 1  # steps
+        if T <= 0:
+            continue
+        out.append((T, float(rank)))
+    return out
+
+def plot_sorted_lengths_running_avg(records, window=None, title="Rank vs trajectory length (sorted)"):
+    """
+    Plot 1 (your idea):
+      - sort experiments by trajectory length
+      - scatter (T, rank)
+      - running average line:
+          * cumulative mean if window=None
+          * rolling mean with given window otherwise
+    """
+
+    data = _extract_T_and_rank(records)
+    if not data:
+        raise ValueError("No valid (observations_len, real_fault_rank) pairs found.")
+
+    data.sort(key=lambda x: x[0])
+    T = np.array([t for t, _ in data], dtype=float)
+    R = np.array([r for _, r in data], dtype=float)
+
+    plt.figure()
+    plt.scatter(T, R, s=18)
+
+    if window is None:
+        # cumulative average
+        running_avg = np.cumsum(R) / np.arange(1, len(R) + 1)
+        plt.plot(T, running_avg)
+        plt.legend(["running avg (cumulative)", "points"])
+    else:
+        # rolling average (centered)
+        w = int(window)
+        if w < 2:
+            raise ValueError("window must be >= 2")
+        kernel = np.ones(w) / w
+        rolling = np.convolve(R, kernel, mode="valid")
+        T_mid = T[w-1:]  # align to end (simple alignment)
+        plt.plot(T_mid, rolling)
+        plt.legend([f"running avg (window={w})", "points"])
+
+    plt.xlabel("Trajectory length (steps)")
+    plt.ylabel("Real fault rank (lower is better)")
+    plt.title(title)
+    plt.grid(True)
+
+def plot_binned_avg_rank(records, bin_size=20, max_steps=200, title="Average rank vs trajectory length (binned)", show_errorbars=True):
+    """
+    Plot 2:
+      - bin by trajectory length
+      - average rank in each bin
+      - optionally show std error bars and counts
+    """
+    data = _extract_T_and_rank(records)
+    if not data:
+        raise ValueError("No valid (observations_len, real_fault_rank) pairs found.")
+
+    bins = list(range(0, max_steps + bin_size, bin_size))
+    xs, ys, errs, ns = [], [], [], []
+
+    for b0, b1 in zip(bins[:-1], bins[1:]):
+        ranks = [rank for (t, rank) in data if b0 <= t < b1]
+        if not ranks:
+            continue
+        ranks = np.array(ranks, dtype=float)
+        xs.append((b0 + b1) / 2.0)
+        ys.append(float(np.mean(ranks)))
+        ns.append(int(len(ranks)))
+
+        if show_errorbars:
+            # standard error of the mean (SEM)
+            sem = float(np.std(ranks, ddof=1) / math.sqrt(len(ranks))) if len(ranks) > 1 else 0.0
+            errs.append(sem)
+
+    plt.figure()
+    if show_errorbars:
+        plt.errorbar(xs, ys, yerr=errs, fmt="o-")
+    else:
+        plt.plot(xs, ys, "o-")
+
+    plt.xlabel("Trajectory length bin center (steps)")
+    plt.ylabel("Average real fault rank (lower is better)")
+    plt.title(title)
+    plt.grid(True)
+
+    # optional: annotate counts above points
+    for x, y, n in zip(xs, ys, ns):
+        plt.annotate(str(n), (x, y), textcoords="offset points", xytext=(0, 6), ha="center")
+
+
+import matplotlib.pyplot as plt
+
+def plot_rank_vs_fault_occurrences_scatter(records, title="Rank vs fault occurrences (scatter)"):
+    xs, ys = [], []
+    for r in records:
+        x = r.get("faulty_actions_indices_len", None)
+        y = r.get("real_fault_rank", None)
+        if x is None or y is None:
+            continue
+        xs.append(int(x))
+        ys.append(float(y))
+
+    plt.figure()
+    plt.scatter(xs, ys, s=20)
+    plt.xlabel("Fault occurrences (trigger count)")
+    plt.ylabel("Real fault rank (lower is better)")
+    plt.title(title)
+    plt.grid(True)
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+def plot_avg_rank_vs_fault_rate(records, title="Average rank vs fault rate"):
+    # collect ranks per fault rate
+    rates_to_ranks = {}
+    for r in records:
+        rate = r.get("real_fault_prob", None)
+        rank = r.get("real_fault_rank", None)
+        if rate is None or rank is None:
+            continue
+        rates_to_ranks.setdefault(float(rate), []).append(float(rank))
+
+    rates = sorted(rates_to_ranks.keys())
+    avg_rank = [float(np.mean(rates_to_ranks[rt])) for rt in rates]
+    counts = [len(rates_to_ranks[rt]) for rt in rates]
+
+    plt.figure()
+    plt.plot(rates, avg_rank, "o-")
+    plt.xlabel("Fault rate (real_fault_prob)")
+    plt.ylabel("Average real fault rank (lower is better)")
+    plt.title(title)
+    plt.grid(True)
+
+    # annotate sample sizes
+    for x, y, n in zip(rates, avg_rank, counts):
+        plt.annotate(str(n), (x, y), textcoords="offset points", xytext=(0, 6), ha="center")
+
+import numpy as np
+import matplotlib.pyplot as plt
+import math
+
+
+def plot_rank_vs_visibility_rate(records, title="Rank vs visibility rate"):
+    xs, ys = [], []
+
+    for r in records:
+        x = r.get("percent_visible_states", None)
+        y = r.get("real_fault_rank", None)
+        if x is None or y is None:
+            continue
+        xs.append(float(x))
+        ys.append(float(y))
+
+    if not xs:
+        raise ValueError("No valid data for percent_visible_states vs real_fault_rank.")
+
+    plt.figure()
+    plt.scatter(xs, ys, s=20)
+    plt.xlabel("Visibility rate (%)")
+    plt.ylabel("Real fault rank (lower is better)")
+    plt.title(title)
+    plt.grid(True)
+
+def plot_avg_rank_vs_visibility_rate(records, title="Average rank vs visibility rate"):
+    vis_to_ranks = {}
+
+    for r in records:
+        vis = r.get("percent_visible_states", None)
+        rank = r.get("real_fault_rank", None)
+        if vis is None or rank is None:
+            continue
+        vis = float(vis)
+        vis_to_ranks.setdefault(vis, []).append(float(rank))
+
+    if not vis_to_ranks:
+        raise ValueError("No valid data for percent_visible_states vs real_fault_rank.")
+
+    xs = sorted(vis_to_ranks.keys())
+    ys = [float(np.mean(vis_to_ranks[x])) for x in xs]
+    counts = [len(vis_to_ranks[x]) for x in xs]
+
+    plt.figure()
+    plt.plot(xs, ys, "o-")
+    plt.xticks(xs)
+    plt.xlabel("Visibility rate (%)")
+    plt.ylabel("Average real fault rank (lower is better)")
+    plt.title(title)
+    plt.grid(True)
+
+    for x, y, n in zip(xs, ys, counts):
+        plt.annotate(str(n), (x, y), textcoords="offset points", xytext=(0, 6), ha="center")
+
+
+def plot_avg_time_vs_visibility_rate(records, title="Average diagnosis time vs visibility rate"):
+    vis_to_times = {}
+
+    for r in records:
+        vis = r.get("percent_visible_states", None)
+        t = r.get("diagnosis_time_sec", None)
+        if vis is None or t is None:
+            continue
+        vis = float(vis)
+        vis_to_times.setdefault(vis, []).append(float(t))
+
+    if not vis_to_times:
+        raise ValueError("No valid data for percent_visible_states vs diagnosis_time_sec.")
+
+    xs = sorted(vis_to_times.keys())
+    ys = [float(np.mean(vis_to_times[x])) for x in xs]
+    counts = [len(vis_to_times[x]) for x in xs]
+
+    plt.figure()
+    plt.plot(xs, ys, "o-")
+    plt.xticks(xs)
+    plt.xlabel("Visibility rate (%)")
+    plt.ylabel("Average diagnosis time (sec)")
+    plt.title(title)
+    plt.grid(True)
+
+    for x, y, n in zip(xs, ys, counts):
+        plt.annotate(str(n), (x, y), textcoords="offset points", xytext=(0, 6), ha="center")
+
+def plot_rank_vs_num_observed_states(records, title="Rank vs number of observed states"):
+    xs, ys = [], []
+
+    for r in records:
+        x = r.get("num_observed_states", None)
+        y = r.get("real_fault_rank", None)
+        if x is None or y is None:
+            continue
+        xs.append(int(x))
+        ys.append(float(y))
+
+    if not xs:
+        raise ValueError("No valid data for num_observed_states vs real_fault_rank.")
+
+    plt.figure()
+    plt.scatter(xs, ys, s=20)
+    plt.xlabel("Number of observed states")
+    plt.ylabel("Real fault rank (lower is better)")
+    plt.title(title)
+    plt.grid(True)
+
+def plot_rank_vs_largest_gap(records, title="Rank vs largest hidden gap"):
+    xs, ys = [], []
+
+    for r in records:
+        x = r.get("largest_gap", None)
+        y = r.get("real_fault_rank", None)
+        if x is None or y is None:
+            continue
+        xs.append(int(x))          # ensure integer
+        ys.append(float(y))
+
+    if not xs:
+        raise ValueError("No valid data for largest_gap vs real_fault_rank.")
+
+    plt.figure()
+    plt.scatter(xs, ys, s=20)
+
+    # force integer ticks on x-axis
+    min_x, max_x = min(xs), max(xs)
+    plt.xticks(range(min_x, max_x + 1))
+
+    plt.xlabel("Largest hidden gap")
+    plt.ylabel("Real fault rank (lower is better)")
+    plt.title(title)
+    plt.grid(True)
+
+def save_all_plots(prefix="rank_plots"):
+    for i, fig_num in enumerate(plt.get_fignums(), start=1):
+        fig = plt.figure(fig_num)
+        fig.savefig(f"{prefix}_{i}.png", dpi=200, bbox_inches="tight")
+
+# ---- Example usage ----
+# records = ... (your list of dicts)
+
+# Plot 1: sorted lengths + cumulative average
+# plot_sorted_lengths_running_avg(records, window=None)
+
+# Plot 1 alternative: sorted lengths + rolling avg window=30
+# plot_sorted_lengths_running_avg(records, window=30)
+
+# Plot 2: binned (bin size 20)
+# plot_binned_avg_rank(records, bin_size=20, max_steps=200, show_errorbars=True)
+
+# plt.show()
+# save_all_plots("frozenlake_rank")
+
+
+def multiple_experiment_FrozenLake_NON_DETERMINSTIC_FO():
+
+    global HARD_CODED_POLICY
+    loaded = load_pairs_from_json("frozenlake_100_pairs_risk_averse_slippery.json")
+    diagnosis_runtimes_ms = []
+    records = []
+    NUM_TRIES = 49
+
+    for i in range(NUM_TRIES):
+
+        map_desc, hardcoded_policy = loaded[i]
+        DOMAIN_KWARGS["FrozenLake_v1"]["desc"] = map_desc
+        DOMAIN_KWARGS["FrozenLake_v1"]["is_slippery"] = True
+        h_rl_models.HARD_CODED_POLICY = hardcoded_policy
+        now = datetime.now()
+        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+        print(f'{dt_string}: try {i}/{NUM_TRIES}')
+
+        domain_name = "FrozenLake_v1"
+        ml_model_name = "PPO"                               # "PPO", "DQN"
+        render_mode = "rgb_array"                           # "human", "rgb_array"
+        max_exec_len = 200
+        debug_print = False
+
+        instance_seed = 10+i
+        num_candidate_fault_modes = 10
+
+        rng = random.Random(instance_seed)
+        percent_visible_states = 100
+        possible_fault_mode_names = [
+                "[0,0,2,3]",
+                "[0,3,2,3]",
+                "[0,1,0,3]",
+                "[0,1,3,3]",
+                "[0,2,2,3]",
+
+                "[0,3,0,3]",
+                "[0,3,3,3]",
+                "[0,0,0,3]",
+                "[0,0,3,3]",
+                "[0,2,1,3]",
+
+                "[0,0,0,0]",
+                "[1,1,1,1]",
+                "[2,2,2,2]",
+                "[3,3,3,3]"
+              ]
+
+        execution_fault_mode_name = rng.choice(possible_fault_mode_names)
+
+        # 1.0 mean Non-intermittent fault - faults always occur
+        fault_rate_list = [0.5, 0.8]
+        for fault_rate in fault_rate_list:
+            output = run_NON_DETERMINSTIC_single_experiment_FO( domain_name=domain_name,
+                                                             ml_model_name=ml_model_name,
+                                                             render_mode=render_mode,
+                                                             max_exec_len=max_exec_len,
+                                                             debug_print=debug_print,
+                                                             execution_fault_mode_name=execution_fault_mode_name,
+                                                             instance_seed=instance_seed,
+                                                             fault_probability=fault_rate,
+                                                             percent_visible_states=percent_visible_states,
+                                                             possible_fault_mode_names=possible_fault_mode_names,
+                                                             num_candidate_fault_modes=num_candidate_fault_modes)
+            if not output:
+                continue
+
+            output["experiment_num"] = i + 1
+            output["real_fault_prob"] = fault_rate
+            output["map_desc"] = map_desc
+            output["hardcoded_policy"] = hardcoded_policy
+            output["domain_name"] = domain_name
+
+            records.append(output)
+
+        """
+            output["sorted_faults"] = sorted_faults
+            output["sorted_faults_with_exp_val"] = sorted_faults_geo
+            output["observations"] = observations
+            output["observations_len"] = len(observations)
+            output["extra_output"] = extra_output
+            output["execution_fault_in_top1"] = execution_fault_in_top1
+            output["execution_fault_in_top2"] = execution_fault_in_top2
+            output["execution_fault_in_top3"] = execution_fault_in_top3
+            output["faulty_actions_indices"] = faulty_actions_indices
+            output["faulty_actions_indices_len"] = len(faulty_actions_indices)
+            output["faulty_actions_indices_not_zero"] = bool(len(faulty_actions_indices) > 0)
+        """
+    exper_write_records_to_excel_ind(records, "frozen_lake_non_deterministic")
+
+
+    plot_sorted_lengths_running_avg(records, window=None)
+    plot_binned_avg_rank(records, bin_size=20, max_steps=200, show_errorbars=True)
+    plot_rank_vs_fault_occurrences_scatter(records)
+    plot_avg_rank_vs_fault_rate(records)
+
+    save_all_plots("frozenlake_rank")
+    plt.show()
+
+    for e in diagnosis_runtimes_ms:
+        print(math.floor(e))
+
+
+
+def plot_avg_gap_time_vs_visibility_rate(records, title="Average gap time vs visibility rate"):
+    vis_to_times = {}
+
+    for r in records:
+        vis = r.get("percent_visible_states", None)
+        t = r.get("avg_gap_time", None)
+        if vis is None or t is None:
+            continue
+        vis = float(vis)
+        vis_to_times.setdefault(vis, []).append(float(t))
+
+    if not vis_to_times:
+        raise ValueError("No valid data for percent_visible_states vs avg_gap_time.")
+
+    xs = sorted(vis_to_times.keys())
+    ys = [float(np.mean(vis_to_times[x])) for x in xs]
+    counts = [len(vis_to_times[x]) for x in xs]
+
+    plt.figure()
+    plt.plot(xs, ys, "o-")
+    plt.xticks(xs)
+    plt.xlabel("Visibility rate (%)")
+    plt.ylabel("Average time per gap (sec)")
+    plt.title(title)
+    plt.grid(True)
+
+    for x, y, n in zip(xs, ys, counts):
+        plt.annotate(str(n), (x, y), textcoords="offset points", xytext=(0, 6), ha="center")
+
+def plot_num_gaps_vs_visibility_rate(records, title="Number of gaps vs visibility rate"):
+    vis_to_num_gaps = {}
+
+    for r in records:
+        vis = r.get("percent_visible_states", None)
+        num_gaps = r.get("num_gaps", None)
+        if vis is None or num_gaps is None:
+            continue
+        vis = float(vis)
+        vis_to_num_gaps.setdefault(vis, []).append(float(num_gaps))
+
+    if not vis_to_num_gaps:
+        raise ValueError("No valid data for percent_visible_states vs num_gaps.")
+
+    xs = sorted(vis_to_num_gaps.keys())
+    ys = [float(np.mean(vis_to_num_gaps[x])) for x in xs]
+    counts = [len(vis_to_num_gaps[x]) for x in xs]
+
+    plt.figure()
+    plt.plot(xs, ys, "o-")
+    plt.xticks(xs)
+    plt.xlabel("Visibility rate (%)")
+    plt.ylabel("Average number of gaps")
+    plt.title(title)
+    plt.grid(True)
+
+    for x, y, n in zip(xs, ys, counts):
+        plt.annotate(str(n), (x, y), textcoords="offset points", xytext=(0, 6), ha="center")
+
+def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.02):
+
+    global HARD_CODED_POLICY
+    loaded = load_pairs_from_json("frozenlake_100_pairs_risk_averse_slippery.json")
+    diagnosis_runtimes_ms = []
+    records = []
+    NUM_TRIES = 49
+    SKIP_PROB = 0.5  # skip 50% of combinations
+
+    print(f"run multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO with {epsilon}")
+
+    for i in range(NUM_TRIES):
+
+        map_desc, hardcoded_policy = loaded[i]
+        DOMAIN_KWARGS["FrozenLake_v1"]["desc"] = map_desc
+        DOMAIN_KWARGS["FrozenLake_v1"]["is_slippery"] = True
+        h_rl_models.HARD_CODED_POLICY = hardcoded_policy
+        now = datetime.now()
+        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+        print(f'{dt_string}: try {i}/{NUM_TRIES}')
+
+        domain_name = "FrozenLake_v1"
+        ml_model_name = "PPO"                         # "PPO", "DQN"
+        render_mode = "rgb_array"                     # "human", "rgb_array"
+        max_exec_len = 200
+        debug_print = False
+
+        instance_seed = 10+i
+        num_candidate_fault_modes = 10
+
+        rng = random.Random(instance_seed)
+        possible_fault_mode_names = [
+                "[0,0,2,3]",
+                "[0,3,2,3]",
+                "[0,1,0,3]",
+                "[0,1,3,3]",
+                "[0,2,2,3]",
+
+                "[0,3,0,3]",
+                "[0,3,3,3]",
+                "[0,0,0,3]",
+                "[0,0,3,3]",
+                "[0,2,1,3]",
+
+                "[0,0,0,0]",
+                "[1,1,1,1]",
+                "[2,2,2,2]",
+                "[3,3,3,3]"
+              ]
+
+        execution_fault_mode_name = rng.choice(possible_fault_mode_names)
+
+        # 1.0 mean Non-intermittent fault - faults always occur
+        fault_rate_list = [0.5, 0.8]
+        percent_visible_states_list = [20, 40, 60, 80, 100]
+
+        fault_rate_list = [0.8]
+        percent_visible_states_list = [80]
+
+
+        for percent_visible_states in percent_visible_states_list:
+            for fault_rate in fault_rate_list:
+
+
+
+                output = run_NON_DETERMINSTIC_single_experiment_PO( domain_name=domain_name,
+                                                                 ml_model_name=ml_model_name,
+                                                                 render_mode=render_mode,
+                                                                 max_exec_len=max_exec_len,
+                                                                 debug_print=debug_print,
+                                                                 execution_fault_mode_name=execution_fault_mode_name,
+                                                                 instance_seed=instance_seed,
+                                                                 fault_probability=fault_rate,
+                                                                 percent_visible_states=percent_visible_states,
+                                                                 possible_fault_mode_names=possible_fault_mode_names,
+                                                                 num_candidate_fault_modes=num_candidate_fault_modes,
+                                                                 epsilon = epsilon)
+                if not output:
+                    continue
+
+                output["epsilon"] = epsilon
+                output["experiment_num"] = i + 1
+                output["real_fault_prob"] = fault_rate
+                output["map_desc"] = map_desc
+                output["hardcoded_policy"] = hardcoded_policy
+                output["domain_name"] = domain_name
+
+                records.append(output)
+
+    file_suffix = str(epsilon).replace(".", "_")
+    exper_write_records_to_excel_ind(
+        records,
+        f"frozen_lake_non_deterministic_PO_epsilon_{file_suffix}"
+    )
+
+    """
+    plot_sorted_lengths_running_avg(records)
+    plot_binned_avg_rank(records)
+    plot_rank_vs_fault_occurrences_scatter(records)
+    plot_avg_rank_vs_fault_rate(records)
+
+    plot_rank_vs_visibility_rate(records)
+    plot_rank_vs_num_observed_states(records)
+    plot_rank_vs_largest_gap(records)
+    plot_avg_rank_vs_visibility_rate(records)
+    plot_avg_time_vs_visibility_rate(records)
+    plot_avg_gap_time_vs_visibility_rate(records)
+    plot_num_gaps_vs_visibility_rate(records)
+
+    save_all_plots("frozenlake_rank")
+    plt.show()
+    """
+
+    for e in diagnosis_runtimes_ms:
+        print(math.floor(e))
+
+def multiple_experiments_FrozenLake_SIF():
+
+    global HARD_CODED_POLICY
+    diagnosis_runtimes_ms = []
+    NUM_TRIES = 100
+    loaded = load_pairs_from_json("frozenlake_100_pairs.json")
+
+    skip_list = [12, 25, 36, 42, 59, 73, 83, 86, 91, 100]
+    records = []
+    for i in range(NUM_TRIES):
+        print(f"experiment {i+1} starts:")
+        if (i+1) in skip_list:
+            print("here skippp")
+            continue
+        map_desc, hardcoded_policy = loaded[i]
+
+        DOMAIN_KWARGS["FrozenLake_v1"]["desc"] = map_desc
+        h_rl_models.HARD_CODED_POLICY = hardcoded_policy
+
+        now = datetime.now()
+        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+        print(f'{dt_string}: try {i+1}/{NUM_TRIES}')
+        domain_name = "FrozenLake_v1"
+        ml_model_name = "PPO"
+        render_mode = "rgb_array"
+        max_exec_len = 200
+        debug_print = False
+        instance_seed = 10 + i
+        num_candidate_fault_modes = 10
+        rng = random.Random(instance_seed)
+
+        fault_probability = 0.3
+        possible_fault_mode_names = [
+                "[0,0,2,3]",
+                "[0,3,2,3]",
+                "[0,1,0,3]",
+                "[0,1,3,3]",
+                "[0,2,2,3]",
+
+                "[0,3,0,3]",
+                "[0,3,3,3]",
+                "[0,0,0,3]",
+                "[0,0,3,3]",
+                "[0,2,1,3]",
+
+                "[0,0,0,0]",
+                "[1,1,1,1]",
+                "[2,2,2,2]",
+                "[3,3,3,3]"
+              ]
+        execution_fault_mode_name = rng.choice(possible_fault_mode_names)
+        percent_visible_states = 30
+        time_always_increasing = True
+        time_increases_between_start_and_end = True
+        visible_states_percent_list = [100, 90, 75, 50, 35]
+        visible_states_percent_start = visible_states_percent_list[0]
+        visible_states_percent_end = visible_states_percent_list[-1]
+
+        for percent_visible_states in visible_states_percent_list:
+            record = run_SIF_single_experiment(domain_name=domain_name,
+                                                             ml_model_name=ml_model_name,
+                                                             render_mode=render_mode,
+                                                             max_exec_len=max_exec_len,
+                                                             debug_print=debug_print,
+                                                             execution_fault_mode_name=execution_fault_mode_name,
+                                                             instance_seed=instance_seed,
+                                                             fault_probability=fault_probability,
+                                                             percent_visible_states=percent_visible_states,
+                                                             possible_fault_mode_names=possible_fault_mode_names,
+                                                             num_candidate_fault_modes=num_candidate_fault_modes,
+                                                             multi_experiment=True)
+
+            record["experiment_num"] = i+1
+            record["map_desc"] = map_desc
+            record["hardcoded_policy"] = hardcoded_policy
+            record["contains_real_diagnosis"] = str(execution_fault_mode_name in record["output"]["diagnoses"])
+            record["diagnosis"] = str(record["output"]["diagnoses"])
+            record["diagnosis_run_time_ms"] = record["output"]["diag_rt_ms"]
+            record["diagnosis_run_time_sec"] = record["output"]["diag_rt_sec"]
+            record["fault_prob"] = fault_probability
+            record["domain_name"] = domain_name
+
+            if not percent_visible_states == visible_states_percent_start:
+                if records[-1]["diagnosis_run_time_ms"] > record["diagnosis_run_time_ms"]:
+                    time_always_increasing = False
+
+            if percent_visible_states == visible_states_percent_end:
+                compare_index = len(visible_states_percent_list)-1
+                if records[-compare_index]["diagnosis_run_time_ms"] > record["diagnosis_run_time_ms"]:
+                    time_increases_between_start_and_end = False
+
+            record["time_always_increasing"] = time_always_increasing
+            record["time_increases_between_start_and_end"] = time_increases_between_start_and_end
+
+            records.append(record)
+
+    exper_100_write_records_to_excel(records, f"single_experiment_{domain_name.split('_')[0]}_SIF")
+    for e in diagnosis_runtimes_ms:
+        print(math.floor(e))
+    # print(f'avg duration in ms: {math.floor(sum(diagnosis_runtimes_ms) / len(diagnosis_runtimes_ms))}')
+
+
+
+def single_experiment_FrozenLake_SIF():
+    # changable test settings - strong fault model intermittent faults (SIF)
+
+    """
+    frozen lake:
+    0 = Left
+    1 = Down
+    2 = Right
+    3 = Up
+    [2,1,2,3] means
+    [0,1,2,3] -> [2,1,2,3]
+    fault mode is:
+    f(Left) = Right
+    all other actions behave good
+    """
+
+    global HARD_CODED_POLICY
+    loaded = load_pairs_from_json("frozenlake_100_pairs.json")
+    NUM_OF_MAPS_AND_POLICIES = 12
+    choosen_num = 1
+    map_desc, hardcoded_policy = loaded[choosen_num]
+    DOMAIN_KWARGS["FrozenLake_v1"]["desc"] = map_desc
+    h_rl_models.HARD_CODED_POLICY = hardcoded_policy
+
+    diagnosis_runtimes_ms = []
+
+    NUM_TRIES = 1
+    for i in range(NUM_TRIES):
+        now = datetime.now()
+        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+        print(f'{dt_string}: try {i}/{NUM_TRIES}')
+
+        domain_name = "FrozenLake_v1"
+        ml_model_name = "PPO"                         # "PPO", "DQN"
+        render_mode = "rgb_array"                     # "human", "rgb_array"
+        max_exec_len = 200
+        debug_print = False
+        # execution_fault_mode_name = "[0,1,0,3]"
+        # execution_fault_mode_name = "[0,3,0,3]"
+        # execution_fault_mode_name = "[0,3,0,3]"
+        execution_fault_mode_name = "[0,3,2,3]"
+        instance_seed = 10
+        fault_probability = 0.3 # 1.0 mean Non-intermittent fault - faults always occur
+        percent_visible_states = 90
+        possible_fault_mode_names = [
+                "[0,0,2,3]",
+                "[2,1,2,3]",
+                "[0,3,2,1]",
+                "[0,0,0,3]",
+                "[0,0,2,0]",
+                "[0,1,0,0]",
+                "[0,0,0,0]",
+                "[0,2,2,1]",
+                "[2,1,0,3]",
+                "[1,0,2,3]",
+                "[0,3,2,3]"
+              ]
+
+        num_candidate_fault_modes = 10
+        diagnosis_runtime_ms = run_SIF_single_experiment(domain_name=domain_name,
+                                                         ml_model_name=ml_model_name,
+                                                         render_mode=render_mode,
+                                                         max_exec_len=max_exec_len,
+                                                         debug_print=debug_print,
+                                                         execution_fault_mode_name=execution_fault_mode_name,
+                                                         instance_seed=instance_seed,
+                                                         fault_probability=fault_probability,
+                                                         percent_visible_states=percent_visible_states,
+                                                         possible_fault_mode_names=possible_fault_mode_names,
+                                                         num_candidate_fault_modes=num_candidate_fault_modes)
+        diagnosis_runtimes_ms.append(diagnosis_runtime_ms)
+
+    for e in diagnosis_runtimes_ms:
+        print(math.floor(e))
+    print(f'avg duration in ms: {math.floor(sum(diagnosis_runtimes_ms) / len(diagnosis_runtimes_ms))}')
+
+
+
+
+def single_experiment_FrozenLake_NON_DETERMINSTIC():
+    # changable test settings - strong fault model intermittent faults (SIF)
+
+    """
+    frozen lake:
+    0 = Left
+    1 = Down
+    2 = Right
+    3 = Up
+    [2,1,2,3] means
+    [0,1,2,3] -> [2,1,2,3]
+    fault mode is:
+    f(Left) = Right
+    all other actions behave good
+    """
+
+    global HARD_CODED_POLICY
+    loaded = load_pairs_from_json("frozenlake_100_pairs_risk_averse_slippery.json")
+    NUM_OF_MAPS_AND_POLICIES = 12
+    choosen_num = 1
+    map_desc, hardcoded_policy = loaded[choosen_num]
+
+    print_map_and_policy(map_desc, hardcoded_policy)
+    print(f"map desc: {map_desc}")
+    print(f"hardcoded_policy: {hardcoded_policy}")
+    DOMAIN_KWARGS["FrozenLake_v1"]["desc"] = map_desc
+    DOMAIN_KWARGS["FrozenLake_v1"]["is_slippery"] = True
+
+    h_rl_models.HARD_CODED_POLICY = hardcoded_policy
+
+    diagnosis_runtimes_ms = []
+
+    NUM_TRIES = 1
+    for i in range(NUM_TRIES):
+        now = datetime.now()
+        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+        print(f'{dt_string}: try {i}/{NUM_TRIES}')
+
+        domain_name = "FrozenLake_v1"
+        ml_model_name = "PPO"                         # "PPO", "DQN"
+        render_mode = "rgb_array"                     # "human", "rgb_array"
+        max_exec_len = 200
+        debug_print = False
+        # execution_fault_mode_name = "[0,1,0,3]"
+        # execution_fault_mode_name = "[0,3,0,3]"
+        # execution_fault_mode_name = "[0,3,0,3]"
+        execution_fault_mode_name = "[0,3,2,3]"
+
+        instance_seed = 10
+        fault_probability = 0.6 # 1.0 mean Non-intermittent fault - faults always occur
+        percent_visible_states = 100
+        possible_fault_mode_names = [
+                "[0,0,2,3]",
+                "[2,1,2,3]",
+                "[0,3,2,1]",
+                "[0,0,0,3]",
+                "[0,0,2,0]",
+                "[0,1,0,0]",
+                "[0,0,0,0]",
+                "[0,2,2,1]",
+                "[2,1,0,3]",
+                "[1,0,2,3]",
+                "[0,3,2,3]"
+              ]
+
+        num_candidate_fault_modes = 10
+        diagnosis_runtime_ms = run_NON_DETERMINSTIC_single_experiment(domain_name=domain_name,
+                                                         ml_model_name=ml_model_name,
+                                                         render_mode=render_mode,
+                                                         max_exec_len=max_exec_len,
+                                                         debug_print=debug_print,
+                                                         execution_fault_mode_name=execution_fault_mode_name,
+                                                         instance_seed=instance_seed,
+                                                         fault_probability=fault_probability,
+                                                         percent_visible_states=percent_visible_states,
+                                                         possible_fault_mode_names=possible_fault_mode_names,
+                                                         num_candidate_fault_modes=num_candidate_fault_modes)
+        diagnosis_runtimes_ms.append(diagnosis_runtime_ms)
+
+    for e in diagnosis_runtimes_ms:
+        print(math.floor(e))
+    print(f'avg duration in ms: {math.floor(sum(diagnosis_runtimes_ms) / len(diagnosis_runtimes_ms))}')
 
 def single_experiment_Acrobot_SIF():
     # changable test settings - strong fault model intermittent faults (SIF)
@@ -322,22 +1177,22 @@ def single_experiment_Acrobot_SIF():
         render_mode = "rgb_array"                     # "human", "rgb_array"
         max_exec_len = 200
         debug_print = False
-        execution_fault_mode_name = "[1,1,2]"
+        execution_fault_mode_name = "[0,2,1]"
         instance_seed = 42
-        fault_probability = 1.0
-        percent_visible_states = 100
+        fault_probability = 0.5
+        percent_visible_states = 30
         possible_fault_mode_names = [
-            "[1,1,2]",
-            "[0,1,1]",
-            "[0,2,1]",
-            "[1,0,2]",
-            "[1,2,0]",
-            "[2,0,1]",
-            "[2,1,0]",
-            "[0,0,0]",
-            "[1,1,1]",
-            "[2,2,2]"
-        ]
+                            "[1,1,2]",
+                            "[0,1,1]",
+                            "[0,2,1]",
+                            "[1,0,2]",
+                            "[1,2,0]",
+                            "[2,0,1]",
+                            "[2,1,0]",
+                            "[0,0,0]",
+                            "[1,1,1]",
+                            "[0,2,2]"
+                          ]
         num_candidate_fault_modes = 10
         diagnosis_runtime_ms = run_SIF_single_experiment(domain_name=domain_name,
                                                          ml_model_name=ml_model_name,

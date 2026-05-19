@@ -102,9 +102,54 @@ class TaxiSetStepWrapper(gym.Wrapper):
         return raw_state, reward, done, trunc, info
 
 
+class FrozenLakeSetStepWrapper(gym.Wrapper):
+    def __init__(self, env):
+        super().__init__(env)
+
+    def reset(self, seed=None):
+        state, info = self.env.reset(seed=seed)
+
+        raw_state = self.unwrapped.s
+        return raw_state, info
+
+    def set_state(self, raw_state):
+        self.unwrapped.s = raw_state
+
+    def step(self, action):
+        state, reward, done, trunc, info = self.env.step(action)
+
+        raw_state = self.unwrapped.s
+        return raw_state, reward, done, trunc, info
+
+
+
 wrappers = {
     "Acrobot_v1": AcrobotSetStepWrapper,
     "CartPole_v1": CartPoleSetStepWrapper,
     "MountainCar_v0": MountainCarSetStepWrapper,
-    "Taxi_v3": TaxiSetStepWrapper
+    "Taxi_v3": TaxiSetStepWrapper,
+    "FrozenLake_v1": FrozenLakeSetStepWrapper
 }
+
+FROZENLAKE_DESC = [
+    "SFFFFFFF",
+    "FFHFFFFF",
+    "FFFHFFFF",
+    "HFFFFFFF",
+    "FFFHFFFH",
+    "FFFFFFFF",
+    "FFFFFFFF",
+    "FFFFHFFG",
+]
+FROZENLAKE_SLIPPERY = True
+
+DOMAIN_KWARGS = {
+    "FrozenLake_v1": {"is_slippery": FROZENLAKE_SLIPPERY,
+                      "desc": FROZENLAKE_DESC}
+}
+
+
+def make_wrapped_env(domain_name, render_mode):
+    kwargs = DOMAIN_KWARGS.get(domain_name, {})
+    base_env = gym.make(domain_name.replace('_', '-'), render_mode=render_mode, **kwargs)
+    return wrappers[domain_name](base_env)

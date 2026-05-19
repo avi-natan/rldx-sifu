@@ -4,14 +4,46 @@ import time
 from pygame import mixer  # Load the popular external library
 
 from p_pipeline import run_experimental_setup, run_experimental_setup_new
-from p_single_experiments import single_experiment_manual, \
-    single_experiment_LunarLander_W, single_experiment_LunarLander_SN, single_experiment_LunarLander_SIF, \
-    single_experiment_Acrobot_W, single_experiment_Acrobot_SN, single_experiment_Acrobot_SIF, single_experiment_Acrobot_SIFU, single_experiment_Acrobot_SIFU2, single_experiment_Acrobot_SIFU3, single_experiment_Acrobot_SIFU4, single_experiment_Acrobot_SIFU5, single_experiment_Acrobot_SIFU6, single_experiment_Acrobot_SIFU7, single_experiment_Acrobot_SIFU8, \
-    single_experiment_CartPole_W, single_experiment_CartPole_SN, single_experiment_CartPole_SIF, single_experiment_CartPole_SIFU, single_experiment_CartPole_SIFU2, single_experiment_CartPole_SIFU3, single_experiment_CartPole_SIFU4, single_experiment_CartPole_SIFU5, single_experiment_CartPole_SIFU6, single_experiment_CartPole_SIFU7, single_experiment_CartPole_SIFU8, \
-    single_experiment_MountainCar_W, single_experiment_MountainCar_SN, single_experiment_MountainCar_SIF, single_experiment_MountainCar_SIFU, single_experiment_MountainCar_SIFU2, single_experiment_MountainCar_SIFU3, single_experiment_MountainCar_SIFU4, single_experiment_MountainCar_SIFU5, single_experiment_MountainCar_SIFU6, single_experiment_MountainCar_SIFU7, single_experiment_MountainCar_SIFU8, \
-    single_experiment_Taxi_W, single_experiment_Taxi_SN, single_experiment_Taxi_SIF, single_experiment_Taxi_SIFU, single_experiment_Taxi_SIFU2, single_experiment_Taxi_SIFU3, single_experiment_Taxi_SIFU4, single_experiment_Taxi_SIFU5, single_experiment_Taxi_SIFU6, single_experiment_Taxi_SIFU7, single_experiment_Taxi_SIFU8
+from p_single_experiments import (single_experiment_manual, \
+                                  single_experiment_LunarLander_W, single_experiment_LunarLander_SN,
+                                  single_experiment_LunarLander_SIF, \
+                                  single_experiment_Acrobot_W, single_experiment_Acrobot_SN,
+                                  single_experiment_Acrobot_SIF, single_experiment_Acrobot_SIFU,
+                                  single_experiment_Acrobot_SIFU2, single_experiment_Acrobot_SIFU3,
+                                  single_experiment_Acrobot_SIFU4, single_experiment_Acrobot_SIFU5,
+                                  single_experiment_Acrobot_SIFU6, single_experiment_Acrobot_SIFU7,
+                                  single_experiment_Acrobot_SIFU8, \
+                                  single_experiment_CartPole_W, single_experiment_CartPole_SN,
+                                  single_experiment_CartPole_SIF, single_experiment_CartPole_SIFU,
+                                  single_experiment_CartPole_SIFU2, single_experiment_CartPole_SIFU3,
+                                  single_experiment_CartPole_SIFU4, single_experiment_CartPole_SIFU5,
+                                  single_experiment_CartPole_SIFU6, single_experiment_CartPole_SIFU7,
+                                  single_experiment_CartPole_SIFU8, \
+                                  single_experiment_MountainCar_W, single_experiment_MountainCar_SN,
+                                  single_experiment_MountainCar_SIF, single_experiment_MountainCar_SIFU,
+                                  single_experiment_MountainCar_SIFU2, single_experiment_MountainCar_SIFU3,
+                                  single_experiment_MountainCar_SIFU4, single_experiment_MountainCar_SIFU5,
+                                  single_experiment_MountainCar_SIFU6, single_experiment_MountainCar_SIFU7,
+                                  single_experiment_MountainCar_SIFU8, \
+                                  single_experiment_Taxi_W, single_experiment_Taxi_SN, single_experiment_Taxi_SIF,
+                                  single_experiment_Taxi_SIFU, single_experiment_Taxi_SIFU2,
+                                  single_experiment_Taxi_SIFU3, single_experiment_Taxi_SIFU4,
+                                  single_experiment_Taxi_SIFU5, single_experiment_Taxi_SIFU6,
+                                  single_experiment_Taxi_SIFU7, single_experiment_Taxi_SIFU8,
+                                  single_experiment_FrozenLake_SIF, multiple_experiments_FrozenLake_SIF,
+                                  single_experiment_FrozenLake_NON_DETERMINSTIC,
+                                  multiple_experiment_FrozenLake_NON_DETERMINSTIC_FO,
+                                  multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO)
+
 
 if __name__ == '__main__':
+
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--epsilon", type=float, required=True)
+    args = parser.parse_args()
+
     try:
         # == single experiments (for coding and debug purposes) ==
         # single_experiment_manual()                #
@@ -24,6 +56,23 @@ if __name__ == '__main__':
         # single_experiment_Acrobot_SN()           # OK ALL
         # single_experiment_Acrobot_SIF()          # OK ALL
         # single_experiment_Acrobot_SIFU()         # OK ALL
+
+        # single_experiment_FrozenLake_SIF()
+
+        multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon = args.epsilon)
+        # single_experiment_FrozenLake_NON_DETERMINSTIC()
+        # single_experiment_FrozenLake_SIF()
+        # multiple_experiments_FrozenLake_SIF()
+        print(f'finished gracefully1')
+        mixer.init()
+        mixer.music.load('alarm.mp3')
+        mixer.music.play()
+
+        while mixer.music.get_busy():  # wait for music to finish playing
+            time.sleep(1)
+
+        exit(0)
+
         # single_experiment_Acrobot_SIFU2()        # OK ALL
         # single_experiment_Acrobot_SIFU3()        # OK ALL
         # single_experiment_Acrobot_SIFU4()        # OK ALL

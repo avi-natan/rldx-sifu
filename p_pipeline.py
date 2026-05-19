@@ -8,7 +8,8 @@ import xlsxwriter
 
 from h_common import read_json_data
 from h_fault_model_generator import FaultModelGeneratorDiscrete
-from p_diagnosers import diagnosers, SIF, SN, W, SIFU, SIFU2, SIFU3, SIFU4, SIFU5, SIFU6, SIFU7, SIFU8
+from p_diagnosers import diagnosers, SIF, SN, W, SIFU, SIFU2, SIFU3, SIFU4, SIFU5, SIFU6, SIFU7, SIFU8, \
+    fault_identification_non_deterministic_FO, fault_identification_non_deterministic_PO
 from p_executor import execute
 
 
@@ -23,13 +24,39 @@ def separate_trajectory(trajectory_execution):
             observations.append(trajectory_execution[i])
     if len(registered_actions) == len(observations):
         registered_actions = registered_actions[:-1]
+
+    print("Ahmad here")
+    print(f"real observations {observations}")
+    print(f"real actions {registered_actions}")
     return registered_actions, observations
 
+"""
+import math
+import random
 
-def generate_observation_mask(observations_length, percent_visible_states):
+def generate_observation_mask(observations_length, percent_visible_states, seed):
+    rng = random.Random(seed)   # local RNG, isolated
+
     mask = [0] * observations_length
     ones = math.floor((observations_length - 2) * percent_visible_states / 100.0)
-    indices = random.sample(range(1, observations_length - 1), ones)
+
+    indices = rng.sample(range(1, observations_length - 1), ones)
+
+    for i in indices:
+        mask[i] = 1
+
+    mask[0] = 1
+    mask[-1] = 1
+
+    return [i for i, v in enumerate(mask) if v == 1]
+"""
+def generate_observation_mask(observations_length, percent_visible_states, seed=42):
+    rng = random.Random(seed)
+
+    mask = [0] * observations_length
+    ones = math.floor((observations_length - 2) * percent_visible_states / 100.0)
+    indices = rng.sample(range(1, observations_length - 1), ones)
+
     for i in indices:
         mask[i] = 1
     mask[0] = 1
@@ -79,6 +106,44 @@ def single_experiment_prepare_inputs(domain_name,
                                                                ml_model_name,
                                                                fault_mode_generator,
                                                                max_exec_len)
+
+    # ### separating trajectory to actions and states
+    registered_actions, observations = separate_trajectory(trajectory_execution)
+
+    return fault_mode_generator, trajectory_execution, faulty_actions_indices, registered_actions, observations
+
+
+def single_experiment_prepare_inputs_non_determinstic(domain_name,
+                                     ml_model_name,
+                                     render_mode,
+                                     max_exec_len,
+                                     debug_print,
+                                     execution_fault_mode_name,
+                                     instance_seed,
+                                     fault_probability):
+
+    # ### initialize fault model generator
+    fault_mode_generator = FaultModelGeneratorDiscrete()
+
+    # ### execute to get trajectory
+    trajectory_execution = []
+    faulty_actions_indices = []
+    num_of_tries = 50
+    while len(faulty_actions_indices) == 0 or len(trajectory_execution) < 60:
+        trajectory_execution, faulty_actions_indices = execute(domain_name,
+                                                               debug_print,
+                                                               execution_fault_mode_name,
+                                                               instance_seed,
+                                                               fault_probability,
+                                                               render_mode,
+                                                               ml_model_name,
+                                                               fault_mode_generator,
+                                                               max_exec_len)
+        num_of_tries -= 1
+        if num_of_tries<=0:
+            print("creating trajectory failed after 50 tries")
+            return [],[],[],[],[]
+
 
     # ### separating trajectory to actions and states
     registered_actions, observations = separate_trajectory(trajectory_execution)
@@ -157,6 +222,7 @@ def rank_diagnoses_SFM(raw_output, registered_actions, debug_print):
             if actions_j[i] is not None:
                 if registered_actions[i] != actions_j[i]:
                     num_actual_faults += 1
+
         num_potential_faults = 0
         for i in range(len(actions_j)):
             if actions_j[i] is not None:
@@ -203,6 +269,8 @@ def rank_diagnoses_SFM(raw_output, registered_actions, debug_print):
         "cmpl_rt_sec": raw_output["totl_rt_sec"] + ranking_runtime_sec,
         "cmpl_rt_ms": raw_output["totl_rt_ms"] + ranking_runtime_ms
     }
+    print(f"final diagnoses: {diagnoses}")
+
 
     return output
 
@@ -210,6 +278,7 @@ def rank_diagnoses_SFM(raw_output, registered_actions, debug_print):
 def prepare_record(domain_name, debug_print, execution_fault_mode_name, instance_seed, fault_probability, percent_visible_states, possible_fault_mode_names, num_candidate_fault_modes,
                    render_mode, ml_model_name, max_exec_len, trajectory_execution, faulty_actions_indices, registered_actions, observations, observation_mask, masked_observations,
                    candidate_fault_modes, output, diagnoser, longest_hidden_state_sequence):
+
     record = {
         "domain_name": domain_name,
         "debug_print": debug_print,
@@ -245,6 +314,124 @@ def get_ordinal_rank(diagnoses, ranks, d):
 
     res = unique_ranks_list.index(rank_d)
     return res
+
+
+
+
+import os
+import json
+import xlsxwriter
+
+def _cell_value(v):
+    """Convert any Python value to something Excel-friendly."""
+    if v is None:
+        return ""
+    if isinstance(v, (int, float, bool, str)):
+        return v
+    # for lists/dicts/np types/objects -> stable string
+    try:
+        return json.dumps(v, ensure_ascii=False)
+    except Exception:
+        return str(v)
+
+def exper_write_records_to_excel_ind(records, experimental_filename, preferred_key_order=None, output_dir="experimental results/100_experiments"):
+
+    """
+    Writes records (list[dict]) to an xlsx table without relying on fixed key names.
+
+    preferred_key_order: optional list of keys to appear first (if present).
+    """
+
+    if not records:
+        raise ValueError("records is empty")
+
+    # collect all keys used across records
+    all_keys = set()
+    for r in records:
+        if not isinstance(r, dict):
+            raise TypeError(f"Each record must be dict, got {type(r)}")
+        all_keys.update(r.keys())
+
+    preferred_key_order = preferred_key_order or []
+    preferred = [k for k in preferred_key_order if k in all_keys]
+    remaining = sorted([k for k in all_keys if k not in set(preferred)])
+
+    keys = preferred + remaining
+
+    # columns for xlsxwriter table
+    columns = [{"header": k} for k in keys]
+
+    # rows aligned to columns
+    rows = []
+    for r in records:
+        rows.append([_cell_value(r.get(k, "")) for k in keys])
+
+    # output path
+    os.makedirs(output_dir, exist_ok=True)
+    safe_name = experimental_filename.replace("/", "_").replace("\\", "_")
+    out_path = os.path.join(output_dir, f"{safe_name}.xlsx")
+
+    workbook = xlsxwriter.Workbook(out_path)
+    worksheet = workbook.add_worksheet("results")
+
+    # add table (xlsxwriter table end row/col are inclusive)
+    worksheet.add_table(
+        0, 0,
+        len(rows), len(columns) - 1,
+        {"data": rows, "columns": columns}
+    )
+
+    workbook.close()
+    return out_path
+
+def exper_100_write_records_to_excel(records, experimental_filename):
+
+    columns = [
+        {'header': '01_experiment_num'},
+        {'header': '02_percent_visible_states'},
+        {'header': '03_fault_probability'},
+        {'header': '04_diagnosis_run_time_ms'},
+        {'header': '05_diagnosis_run_time_sec'},
+        {'header': '06_contains_real_diagnosis'},
+        {'header': '07_time_always_increasing'},
+        {'header': '08_time_increases_between_start_and_end'},
+        {'header': '09_diagnosis'},
+        {'header': '10_execution_fault_mode_name'},
+        {'header': '11_candidate_fault_modes'},
+        {'header': '12_domain_name'},
+        {'header': '13_instance_seed'},
+        {'header': '14_observations'},
+        {'header': '15_map_desc'},
+        {'header': '16_hardcoded_policy'}
+    ]
+
+    rows = []
+    for i in range(len(records)):
+        record_i = records[i]
+        row = [
+            int(record_i['experiment_num']),
+            int(record_i['percent_visible_states']),
+            float(record_i['fault_probability']),
+            float(record_i['diagnosis_run_time_ms']),
+            float(record_i['diagnosis_run_time_sec']),
+            str(record_i['contains_real_diagnosis']),
+            str(record_i['time_always_increasing']),
+            str(record_i['time_increases_between_start_and_end']),
+            str(record_i['diagnosis']),
+            str(record_i['execution_fault_mode_name']),
+            str(record_i['candidate_fault_modes']),
+            str(record_i['domain_name']),
+            str(record_i['instance_seed']),
+            str(record_i['observations']),
+            str(record_i['map_desc']),
+            str(record_i['hardcoded_policy'])
+        ]
+
+        rows.append(row)
+    workbook = xlsxwriter.Workbook(f"experimental results/100_experiments/{experimental_filename.replace('/', '_')}.xlsx")
+    worksheet = workbook.add_worksheet('results')
+    worksheet.add_table(0, 0, len(rows), len(columns) - 1, {'data': rows, 'columns': columns})
+    workbook.close()
 
 
 def write_records_to_excel(records, experimental_filename):
@@ -295,7 +482,7 @@ def write_records_to_excel(records, experimental_filename):
             len(record_i['faulty_actions_indices']),  # 06_O_len_faulty_actions_indices
             str(record_i['registered_actions']),  # 07_O_registered_actions
             len(record_i['registered_actions']),  # 08_O_len_registered_actions
-            str(record_i['observations']) if record_i['debug_print'] else 'Omitted',  # 09_O_observations
+            str(record_i['observations']),  #if record_i['debug_print'] else 'Omitted',  09_O_observations
             record_i['percent_visible_states'],  # 10_i_percent_visible_states
             str(record_i['observation_mask']),  # 11_O_observation_mask
             len(record_i['observation_mask']),  # 12_O_num_visible_states
@@ -322,7 +509,7 @@ def write_records_to_excel(records, experimental_filename):
             str(list(record_i['output']['diagnosis_actions'])) if record_i['diagnoser'] in {"SIF"} else "Irrelevant"  # 33_O_diagnosis_actions
         ]
         rows.append(row)
-    workbook = xlsxwriter.Workbook(f"experimental results/{experimental_filename.replace('/', '_')}.xlsx")
+    workbook = xlsxwriter.Workbook(f"experimental results/100_experiments/{experimental_filename.replace('/', '_')}.xlsx")
     worksheet = workbook.add_worksheet('results')
     worksheet.add_table(0, 0, len(rows), len(columns) - 1, {'data': rows, 'columns': columns})
     workbook.close()
@@ -449,6 +636,197 @@ def run_SN_single_experiment(domain_name,
     return raw_output["diag_rt_ms"]
 
 
+def run_NON_DETERMINSTIC_single_experiment_FO(domain_name,
+                              ml_model_name,
+                              render_mode,
+                              max_exec_len,
+                              debug_print,
+                              execution_fault_mode_name,
+                              instance_seed,
+                              fault_probability,
+                              percent_visible_states,
+                              possible_fault_mode_names,
+                              num_candidate_fault_modes,
+                              multi_experiment=False):
+    #### prepare the records database to be written to the excel file
+    records = []
+
+    # ### prepare the inputs to the algorithm based on the instance inputs, including inputs for rnking
+    fault_mode_generator, trajectory_execution, \
+        faulty_actions_indices, registered_actions, observations = single_experiment_prepare_inputs_non_determinstic(domain_name,
+                                                                                                    ml_model_name,
+                                                                                                    render_mode,
+                                                                                                    max_exec_len,
+                                                                                                    debug_print,
+                                                                                                    execution_fault_mode_name,
+                                                                                                    instance_seed,
+                                                                                                    fault_probability)
+    if not trajectory_execution:
+        print(f"creating trajectory failed for {execution_fault_mode_name} and fault rate {fault_probability}")
+        return
+
+    print(f'registered_actions: {[f"{i}:{a}" for i, a in enumerate(registered_actions)]}')
+    print(f'faulty actions indices: {faulty_actions_indices}')
+
+    # ### generate observation mask
+    observation_mask = generate_observation_mask(len(observations), percent_visible_states)
+    # ### calculate largest hidden gap
+    longest_hidden_state_sequence = calculate_largest_hidden_gap(observation_mask)
+    print(f'OBSERVATION MASK: {str(observation_mask)}')
+    print(f'LONGEST HIDDEN STATE SEQUENCE: {longest_hidden_state_sequence}')
+    print(f'HIDDEN STATES: {[oi for oi in range(len(observations)) if oi not in observation_mask]}')
+    print(f'observed {len(observation_mask)}/{len(observations)} states')
+
+    # ### mask the states list
+    masked_observations = mask_states(observations, observation_mask)
+
+    # ### prepare candidate fault modes
+    candidate_fault_modes = prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator)
+
+    # ### run SIF
+    print("here? 14")
+    raw_output = fault_identification_non_deterministic_FO(debug_print=debug_print, render_mode=render_mode, instance_seed=instance_seed, ml_model_name=ml_model_name, domain_name=domain_name, observations=masked_observations, candidate_fault_modes=candidate_fault_modes)
+    execution_fault_in_top1 = execution_fault_mode_name in [fault for fault, _ in raw_output["sorted_faults"][:1]]
+    execution_fault_in_top2 = execution_fault_mode_name in [fault for fault, _ in raw_output["sorted_faults"][:2]]
+    execution_fault_in_top3 = execution_fault_mode_name in [fault for fault, _ in raw_output["sorted_faults"][:3]]
+
+    print("here? 2")
+
+    # raw_output["sorted_faults"] is list[(fault_key, score)], best-first
+    sorted_faults = raw_output["sorted_faults"]
+
+    # Find rank (1-based). If not found, rank=None
+    real_rank = None
+    real_score = None
+    for idx, (fault_key, score) in enumerate(sorted_faults):
+        if fault_key == execution_fault_mode_name:
+            real_rank = idx + 1
+            real_score = score
+            break
+
+    top_fault, top_score = sorted_faults[0]
+    score_gap_top_minus_real = None if real_score is None else (top_score - real_score)
+
+    raw_output["real_fault_rank"] = real_rank
+    raw_output["real_fault_score"] = real_score
+    raw_output["top_minus_real_score_gap"] = score_gap_top_minus_real
+    raw_output["top_fault_key"] = top_fault
+    raw_output["top_fault_score"] = top_score
+
+    raw_output["execution_fault_in_top1"] = execution_fault_in_top1
+    raw_output["execution_fault_in_top2"] = execution_fault_in_top2
+    raw_output["execution_fault_in_top3"] = execution_fault_in_top3
+    raw_output["faulty_actions_indices"] = faulty_actions_indices
+    raw_output["faulty_actions_indices_len"] = len(faulty_actions_indices)
+    raw_output["faulty_actions_indices_not_zero"] = bool(len(faulty_actions_indices) > 0)
+
+    return raw_output
+
+
+def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
+                              ml_model_name,
+                              render_mode,
+                              max_exec_len,
+                              debug_print,
+                              execution_fault_mode_name,
+                              instance_seed,
+                              fault_probability,
+                              percent_visible_states,
+                              possible_fault_mode_names,
+                              num_candidate_fault_modes,
+                              epsilon = 0.02,
+                              multi_experiment=False):
+
+    #### prepare the records database to be written to the excel file
+    records = []
+
+    # ### prepare the inputs to the algorithm based on the instance inputs, including inputs for rnking
+    fault_mode_generator, trajectory_execution, \
+        faulty_actions_indices, registered_actions, observations = single_experiment_prepare_inputs_non_determinstic(domain_name,
+                                                                                                    ml_model_name,
+                                                                                                    render_mode,
+                                                                                                    max_exec_len,
+                                                                                                    debug_print,
+                                                                                                    execution_fault_mode_name,
+                                                                                                    instance_seed,
+                                                                                                    fault_probability)
+    if not trajectory_execution:
+        print(f"creating trajectory failed for {execution_fault_mode_name} and fault rate {fault_probability}")
+        return
+
+    print(f'registered_actions: {[f"{i}:{a}" for i, a in enumerate(registered_actions)]}')
+    print(f'faulty actions indices: {faulty_actions_indices}')
+
+    # ### generate observation mask
+    observation_mask = generate_observation_mask(len(observations), percent_visible_states)
+    # ### calculate largest hidden gap
+    longest_hidden_state_sequence = calculate_largest_hidden_gap(observation_mask)
+    print(f'OBSERVATION MASK: {str(observation_mask)}')
+    print(f'LONGEST HIDDEN STATE SEQUENCE: {longest_hidden_state_sequence}')
+    print(f'HIDDEN STATES: {[oi for oi in range(len(observations)) if oi not in observation_mask]}')
+    print(f'observed {len(observation_mask)}/{len(observations)} states')
+
+    # ### mask the states list
+    masked_observations = mask_states(observations, observation_mask)
+
+    # ### prepare candidate fault modes
+    candidate_fault_modes = prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator)
+
+    # ### run SIF
+    print("here? 14")
+
+    raw_output = fault_identification_non_deterministic_PO(debug_print=debug_print,
+                                                           render_mode=render_mode,
+                                                           instance_seed=instance_seed,
+                                                           ml_model_name=ml_model_name,
+                                                           domain_name=domain_name,
+                                                           observations=masked_observations,
+                                                           candidate_fault_modes=candidate_fault_modes,
+                                                           fault_rate=fault_probability,
+                                                           epsilon = epsilon)
+
+    execution_fault_in_top1 = execution_fault_mode_name in [fault for fault, _ in raw_output["sorted_faults"][:1]]
+    execution_fault_in_top2 = execution_fault_mode_name in [fault for fault, _ in raw_output["sorted_faults"][:2]]
+    execution_fault_in_top3 = execution_fault_mode_name in [fault for fault, _ in raw_output["sorted_faults"][:3]]
+
+    print("here? 2")
+
+    # raw_output["sorted_faults"] is list[(fault_key, score)], best-first
+    sorted_faults = raw_output["sorted_faults"]
+
+    # Find rank (1-based). If not found, rank=None
+    real_rank = None
+    real_score = None
+    for idx, (fault_key, score) in enumerate(sorted_faults):
+        if fault_key == execution_fault_mode_name:
+            real_rank = idx + 1
+            real_score = score
+            break
+
+    top_fault, top_score = sorted_faults[0]
+    score_gap_top_minus_real = None if real_score is None else (top_score - real_score)
+
+    raw_output["real_fault_rank"] = real_rank
+    print(f"real fault rank {real_rank}")
+    raw_output["real_fault_score"] = real_score
+    raw_output["top_minus_real_score_gap"] = score_gap_top_minus_real
+    raw_output["top_fault_key"] = top_fault
+    raw_output["top_fault_score"] = top_score
+
+    raw_output["percent_visible_states"] = percent_visible_states
+    raw_output["num_observed_states"] = len(observation_mask)
+    raw_output["largest_gap"] = longest_hidden_state_sequence
+
+    raw_output["execution_fault_in_top1"] = execution_fault_in_top1
+    raw_output["execution_fault_in_top2"] = execution_fault_in_top2
+    raw_output["execution_fault_in_top3"] = execution_fault_in_top3
+    raw_output["faulty_actions_indices"] = faulty_actions_indices
+    raw_output["faulty_actions_indices_len"] = len(faulty_actions_indices)
+    raw_output["faulty_actions_indices_not_zero"] = bool(len(faulty_actions_indices) > 0)
+
+    return raw_output
+
+
 def run_SIF_single_experiment(domain_name,
                               ml_model_name,
                               render_mode,
@@ -459,7 +837,8 @@ def run_SIF_single_experiment(domain_name,
                               fault_probability,
                               percent_visible_states,
                               possible_fault_mode_names,
-                              num_candidate_fault_modes):
+                              num_candidate_fault_modes,
+                              multi_experiment=False):
     # ### prepare the records database to be written to the excel file
     records = []
 
@@ -492,15 +871,39 @@ def run_SIF_single_experiment(domain_name,
     candidate_fault_modes = prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator)
 
     # ### run SIF
+    print("here? 1")
     raw_output = SIF(debug_print=debug_print, render_mode=render_mode, instance_seed=instance_seed, ml_model_name=ml_model_name, domain_name=domain_name, observations=masked_observations, candidate_fault_modes=candidate_fault_modes)
+    print("here? 2")
 
     # ### ranking the diagnoses
     output = rank_diagnoses_SFM(raw_output, registered_actions, debug_print)
+    if multi_experiment:
+        del output["init_rt_sec"]
+        del output["init_rt_ms"]
+        del output["G_max_size"]
+        del output["diagnosis_actions"]
+        del output["rank_rt_sec"]
+        del output["rank_rt_ms"]
+        del output["cmpl_rt_sec"]
+        del output["cmpl_rt_ms"]
 
     # ### preparing record for writing to excel file
     record = prepare_record(domain_name, debug_print, execution_fault_mode_name, instance_seed, fault_probability, percent_visible_states, possible_fault_mode_names, num_candidate_fault_modes,
                             render_mode, ml_model_name, max_exec_len, trajectory_execution, faulty_actions_indices, registered_actions, observations, observation_mask, masked_observations,
                             candidate_fault_modes, output, "SIF", longest_hidden_state_sequence)
+
+
+    if multi_experiment:
+        del record["debug_print"]
+        del record["render_mode"]
+        del record["num_candidate_fault_modes"]
+        del record["ml_model_name"]
+        del record["max_exec_len"]
+        del record["diagnoser"]
+        del record["longest_hidden_state_sequence"]
+
+        return record
+
     records.append(record)
 
     # ### write records to an excel file

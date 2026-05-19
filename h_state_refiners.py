@@ -19,10 +19,15 @@ def taxi_refiner(raw_state):
     refined_state = int(raw_state)
     return refined_state
 
+def frozen_lake_refiner(raw_state):
+    refined_state = int(raw_state)
+    return refined_state
+
 
 refiners = {
     "Acrobot_v1": acrobot_refiner,
     "CartPole_v1": cart_pole_refiner,
     "MountainCar_v0": mountain_car_refiner,
-    "Taxi_v3": taxi_refiner
+    "Taxi_v3": taxi_refiner,
+    "FrozenLake_v1": frozen_lake_refiner
 }
