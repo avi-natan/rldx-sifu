@@ -788,7 +788,7 @@ def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.02):
     loaded = load_pairs_from_json("frozenlake_100_pairs_risk_averse_slippery.json")
     diagnosis_runtimes_ms = []
     records = []
-    NUM_TRIES = 49
+    NUM_TRIES = 3
     SKIP_PROB = 0.5  # skip 50% of combinations
 
     print(f"run multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO with {epsilon}")
