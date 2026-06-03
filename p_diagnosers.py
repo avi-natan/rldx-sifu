@@ -469,7 +469,7 @@ def fault_identification_non_deterministic_PO(debug_print, render_mode,
         gap_bonus = int(150 * current_gap_length * (0.025 / epsilon) ** 2)
         max_tries = base_max + gap_bonus
 
-        print(f"epsilon1 ={epsilon}, gap length ={current_gap_length} so max_tries = {max_tries}")
+        # print(f"epsilon1 ={epsilon}, gap length ={current_gap_length} so max_tries = {max_tries}")
 
         gap_start_time = time.time()
         for curr_fault_key in candidate_fault_modes:

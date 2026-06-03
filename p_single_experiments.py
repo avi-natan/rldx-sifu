@@ -788,7 +788,8 @@ def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.02):
     loaded = load_pairs_from_json("frozenlake_100_pairs_risk_averse_slippery.json")
     diagnosis_runtimes_ms = []
     records = []
-    NUM_TRIES = 3
+
+    NUM_TRIES = 49
     SKIP_PROB = 0.5  # skip 50% of combinations
 
     print(f"run multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO with {epsilon}")
@@ -840,8 +841,6 @@ def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.02):
 
         for percent_visible_states in percent_visible_states_list:
             for fault_rate in fault_rate_list:
-
-
 
                 output = run_NON_DETERMINSTIC_single_experiment_PO( domain_name=domain_name,
                                                                  ml_model_name=ml_model_name,
