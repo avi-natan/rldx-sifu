@@ -463,10 +463,10 @@ def fault_identification_non_deterministic_PO(debug_print, render_mode,
         current_gap_length = i - last_observed_index
 
         min_tries = 100 + 10 * current_gap_length
-        # max_tries = 2000 + 100 * current_gap_length
+        scale = max(1.0, (0.025 / epsilon) ** 2)
 
-        base_max = int(2500 * (0.025 / epsilon) ** 2)
-        gap_bonus = int(150 * current_gap_length * (0.025 / epsilon) ** 2)
+        base_max = int(2500 * scale)
+        gap_bonus = int(150 * current_gap_length * scale)
         max_tries = base_max + gap_bonus
 
         # print(f"epsilon1 ={epsilon}, gap length ={current_gap_length} so max_tries = {max_tries}")
