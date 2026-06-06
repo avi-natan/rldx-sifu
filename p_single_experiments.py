@@ -923,13 +923,13 @@ def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fau
     file_suffix = str(epsilon).replace(".", "_")
 
     if unknown_fault_rate:
-        method_suffix = "UN_known_fault_rate"
+        method_suffix = "UN_known_fr"
     else:
-        method_suffix = "known_fault_rate"
+        method_suffix = "known_fr"
 
     exper_write_records_to_excel_ind(
         records,
-        f"frozen_lake_non_deterministic_PO_{method_suffix}_epsilon_{file_suffix}"
+        f"frozen_lake_non_deterministic_PO_{method_suffix}_epsilon_{file_suffix}_MAPS_{maps_num}"
     )
 
     for e in diagnosis_runtimes_ms:
