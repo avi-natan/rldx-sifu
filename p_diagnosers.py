@@ -424,14 +424,224 @@ def simulate_m_traces_adaptive_monte_carlo(starting_state, observed_next_state, 
     }
 
 
+def fault_identification_non_deterministic_PO_unknown_fault_rate(
+        debug_print,
+        render_mode,
+        instance_seed,
+        ml_model_name,
+        domain_name,
+        observations,
+        candidate_fault_modes,
+        fault_rate_candidates,
+        epsilon,
+        ):
+
+    policy = load_trained_model(domain_name, ml_model_name)
+
+    simulator = make_wrapped_env(domain_name, render_mode)
+    initial_obs, _ = simulator.reset(seed=instance_seed)
+    S_0, _ = simulator.reset()
+    assert comparators[domain_name](observations[0], S_0)
+
+    diagnosis_time_sec_start = time.time()
+
+    # structure:
+    # fault_prob_hat_for_step_and_rate[i][fault_rate][fault_key] = p_hat
+    fault_prob_hat_for_step_and_rate = {}
+
+    last_observed_index = 0
+    gap_times = []
+    num_gaps = 0
+    num_of_observed_states = 1
+    adaptive_stats = []
+
+
+    for i in range(1, len(observations)):
+
+        if observations[i] is None:
+            continue
+
+        fault_prob_hat_for_step_and_rate[i] = {}
+
+        num_of_observed_states += 1
+        current_gap_length = i - last_observed_index
+
+        min_tries = 100 + 10 * current_gap_length
+        scale = max(1.0, (0.025 / epsilon) ** 2)
+
+        base_max = int(2500 * scale)
+        gap_bonus = int(150 * current_gap_length * scale)
+        max_tries = base_max + gap_bonus
+
+        gap_start_time = time.time()
+
+        for curr_fault_rate in fault_rate_candidates:
+
+            fault_prob_hat_for_step_and_rate[i][curr_fault_rate] = {}
+
+            for curr_fault_key in candidate_fault_modes:
+
+                res = simulate_m_traces_adaptive_monte_carlo(
+                    observations[last_observed_index],
+                    observations[i],
+                    current_gap_length,
+                    candidate_fault_modes[curr_fault_key],
+                    curr_fault_rate,
+                    domain_name,
+                    instance_seed,
+                    simulator,
+                    policy,
+                    comparators[domain_name],
+                    debug_print,
+                    min_tries=min_tries,
+                    max_tries=max_tries,
+                    batch_size=50,
+                    epsilon=epsilon
+                )
+
+                p_hat = max(res["p_hat"], 1e-12)
+                fault_prob_hat_for_step_and_rate[i][curr_fault_rate][curr_fault_key] = p_hat
+                adaptive_stats.append(res)
+
+                if res["stop_reason"] == "max_tries":
+                    print(
+                        f"MAX HIT | gap={res['trace_length']} "
+                        f"tries={res['num_of_tries']} "
+                        f"p={res['p_hat']:.4f} "
+                        f"margin={res['margin']} "
+                        f"fault_rate={curr_fault_rate} "
+                        f"curr_fault_key={curr_fault_key}"
+                    )
+
+        gap_end_time = time.time()
+        gap_times.append(gap_end_time - gap_start_time)
+        num_gaps += 1
+        last_observed_index = i
+
+    # ---------------------------------------------------
+    # Compute log likelihood for each fault and each rate
+    # ---------------------------------------------------
+
+    log_prob_total_per_fault_and_rate = {}
+
+    for f in candidate_fault_modes:
+        log_prob_total_per_fault_and_rate[f] = {}
+
+        for curr_fault_rate in fault_rate_candidates:
+            log_prob = 0.0
+
+            for i in range(1, len(observations)):
+                if observations[i] is None:
+                    continue
+
+                p = fault_prob_hat_for_step_and_rate[i][curr_fault_rate][f]
+                log_prob += math.log(p)
+
+            log_prob_total_per_fault_and_rate[f][curr_fault_rate] = log_prob
+
+    # ---------------------------------------------------
+    # For each fault, choose the best fault rate
+    # ---------------------------------------------------
+
+    best_logL_per_fault = {}
+    best_rate_per_fault = {}
+
+    for f in candidate_fault_modes:
+
+        best_rate = max(
+            fault_rate_candidates,
+            key=lambda r: log_prob_total_per_fault_and_rate[f][r]
+        )
+
+        best_rate_per_fault[f] = best_rate
+        best_logL_per_fault[f] = log_prob_total_per_fault_and_rate[f][best_rate]
+
+    sorted_faults = sorted(
+        best_logL_per_fault.items(),
+        key=lambda x: x[1],
+        reverse=True
+    )
+    # sorted_faults: List[Tuple[fault_key, logL]]
+
+    T = num_of_observed_states - 1
+    sorted_faults_geo = [
+        (fault, math.exp(logL / T))
+        for fault, logL in sorted_faults
+    ]
+
+
+
+    print("Fault scores using UNKNOWN fault rate method:")
+    extra_output = ""
+
+    for fault, logL in sorted_faults:
+        rate = best_rate_per_fault[fault]
+
+        curr_output = (
+            f"Fault: {fault}, "
+            f"logL: {logL:.6f}, "
+            f"Normalized LogL: {(logL / T):.6f}, "
+            f"Exp of Normalized LogL: {math.exp(logL / T):.6f}, "
+            f"Best Estimated Rate: {rate}"
+        )
+
+        print(curr_output)
+        extra_output += curr_output + "\n"
+
+    diagnosis_time_sec_end = time.time()
+    diagnosis_time_sec = diagnosis_time_sec_end - diagnosis_time_sec_start
+    diagnosis_time_ms = diagnosis_time_sec * 1000
+
+    avg_gap_time = sum(gap_times) / len(gap_times) if gap_times else 0.0
+
+    output = {}
+    output["diagnosis_time_sec"] = diagnosis_time_sec
+    output["diagnosis_time_ms"] = diagnosis_time_ms
+
+    output["avg_gap_time"] = avg_gap_time
+    output["num_gaps"] = num_gaps
+
+    output["sorted_faults"] = sorted_faults
+    output["sorted_faults_with_exp_val"] = sorted_faults_geo
+
+    output["best_rate_per_fault"] = best_rate_per_fault
+    output["log_prob_total_per_fault_and_rate"] = log_prob_total_per_fault_and_rate
+    output["fault_rate_candidates"] = fault_rate_candidates
+
+    output["observations"] = observations
+    output["observations_len"] = len(observations)
+    output["extra_output"] = extra_output
+
+    total_calls = len(adaptive_stats)
+
+    if total_calls > 0:
+        avg_tries = sum(s["num_of_tries"] for s in adaptive_stats) / total_calls
+        max_hits = sum(1 for s in adaptive_stats if s["stop_reason"] == "max_tries")
+        conf_hits = total_calls - max_hits
+
+        print("\n========= ADAPTIVE MC DEBUG =========")
+        print(f"Total calls: {total_calls}")
+        print(f"Avg tries: {avg_tries:.2f}")
+        print(f"Confidence stops: {conf_hits}")
+        print(f"Max stops: {max_hits}")
+        print(f"Max stop rate: {max_hits / total_calls:.3f}")
+
+        output["adaptive_total_calls"] = total_calls
+        output["adaptive_avg_tries"] = avg_tries
+        output["adaptive_confidence_stops"] = conf_hits
+        output["adaptive_max_stops"] = max_hits
+        output["adaptive_max_stop_rate"] = max_hits / total_calls
+
+
+    return output
+
+
 
 def fault_identification_non_deterministic_PO(debug_print, render_mode,
                                               instance_seed, ml_model_name,
                                               domain_name, observations,
-                                              candidate_fault_modes, epsilon = 0.02, fault_rate = None):
+                                              candidate_fault_modes, epsilon, fault_rate = None):
 
-    import time
-    NON_DETERMINISTIC_TRIES = 1000
     # load trained model as policy
     policy = load_trained_model(domain_name, ml_model_name)
 
@@ -442,22 +652,23 @@ def fault_identification_non_deterministic_PO(debug_print, render_mode,
     assert comparators[domain_name](observations[0], S_0)
 
     # initialize time counting
-
     diagnosis_time_sec_start = time.time()
     fault_prob_hat_for_step = {}
-    last_observed_index = 0
 
+    last_observed_index = 0
     gap_times = []
     num_gaps = 0
-
     num_of_observed_states = 1
     adaptive_stats = []
 
+
     for i in range(1, len(observations)):
-        fault_prob_hat_for_step[i] = {}
+
 
         if observations[i] is None:
             continue
+
+        fault_prob_hat_for_step[i] = {}
 
         num_of_observed_states+=1
         current_gap_length = i - last_observed_index
@@ -520,33 +731,8 @@ def fault_identification_non_deterministic_PO(debug_print, render_mode,
         num_gaps += 1
 
         last_observed_index = i
-    """
-    # fault_rates = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-
-
-    
-    fault_prob_for_step_and_rate = {r: {} for r in fault_rates}
-
-    
-    # step 1
-    for fault_rate in fault_rates:
-        for i in range(1, len(observations)):
-            prob_h = healthy_fault_prob_for_step[i]
-
-            if i not in fault_prob_for_step_and_rate[fault_rate]:
-                fault_prob_for_step_and_rate[fault_rate][i] = {}
-
-            for curr_fault_key in candidate_fault_modes:
-                fault_hits = fault_prob_hat_for_step[i][curr_fault_key]
-                curr_fault_prob = fault_hits / NON_DETERMINISTIC_TRIES
-                fault_prob_for_step_and_rate[fault_rate][i][curr_fault_key] = fault_rate * curr_fault_prob + (
-                            1.0 - fault_rate) * prob_h
-    """
-
-    #log_prob_total_per_fault_and_rate = {f: {} for f in candidate_fault_modes}
 
     log_prob_total_per_fault = {}
-    import math
 
     # step 1
     for f in candidate_fault_modes:
@@ -613,7 +799,7 @@ def fault_identification_non_deterministic_PO(debug_print, render_mode,
     max_hits = sum(1 for s in adaptive_stats if s["stop_reason"] == "max_tries")
     conf_hits = total_calls - max_hits
 
-    print("\n=== ADAPTIVE MC DEBUG ===")
+    print("\n========= ADAPTIVE MC DEBUG =========")
     print(f"Total calls: {total_calls}")
     print(f"Avg tries: {avg_tries:.2f}")
     print(f"Confidence stops: {conf_hits}")

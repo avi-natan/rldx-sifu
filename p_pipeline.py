@@ -9,12 +9,13 @@ import xlsxwriter
 from h_common import read_json_data
 from h_fault_model_generator import FaultModelGeneratorDiscrete
 from p_diagnosers import diagnosers, SIF, SN, W, SIFU, SIFU2, SIFU3, SIFU4, SIFU5, SIFU6, SIFU7, SIFU8, \
-    fault_identification_non_deterministic_FO, fault_identification_non_deterministic_PO
+    fault_identification_non_deterministic_FO, fault_identification_non_deterministic_PO, \
+    fault_identification_non_deterministic_PO_unknown_fault_rate
 from p_executor import execute
 
 
 # separating trajectory to actions and states
-def separate_trajectory(trajectory_execution):
+def separate_trajectory(trajectory_execution, debug_print=False):
     registered_actions = []
     observations = []
     for i in range(len(trajectory_execution)):
@@ -25,9 +26,9 @@ def separate_trajectory(trajectory_execution):
     if len(registered_actions) == len(observations):
         registered_actions = registered_actions[:-1]
 
-    print("Ahmad here")
-    print(f"real observations {observations}")
-    print(f"real actions {registered_actions}")
+    if debug_print:
+        print(f"real observations {observations}")
+        print(f"real actions {registered_actions}")
     return registered_actions, observations
 
 """
@@ -684,13 +685,12 @@ def run_NON_DETERMINSTIC_single_experiment_FO(domain_name,
     candidate_fault_modes = prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator)
 
     # ### run SIF
-    print("here? 14")
     raw_output = fault_identification_non_deterministic_FO(debug_print=debug_print, render_mode=render_mode, instance_seed=instance_seed, ml_model_name=ml_model_name, domain_name=domain_name, observations=masked_observations, candidate_fault_modes=candidate_fault_modes)
     execution_fault_in_top1 = execution_fault_mode_name in [fault for fault, _ in raw_output["sorted_faults"][:1]]
     execution_fault_in_top2 = execution_fault_mode_name in [fault for fault, _ in raw_output["sorted_faults"][:2]]
     execution_fault_in_top3 = execution_fault_mode_name in [fault for fault, _ in raw_output["sorted_faults"][:3]]
 
-    print("here? 2")
+
 
     # raw_output["sorted_faults"] is list[(fault_key, score)], best-first
     sorted_faults = raw_output["sorted_faults"]
@@ -734,7 +734,9 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
                               percent_visible_states,
                               possible_fault_mode_names,
                               num_candidate_fault_modes,
-                              epsilon = 0.02,
+                              unknown_fault_rate,
+                              fault_rate_candidates,
+                              epsilon,
                               multi_experiment=False):
 
     #### prepare the records database to be written to the excel file
@@ -754,17 +756,20 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
         print(f"creating trajectory failed for {execution_fault_mode_name} and fault rate {fault_probability}")
         return
 
-    print(f'registered_actions: {[f"{i}:{a}" for i, a in enumerate(registered_actions)]}')
-    print(f'faulty actions indices: {faulty_actions_indices}')
+    if debug_print:
+        print(f'registered_actions: {[f"{i}:{a}" for i, a in enumerate(registered_actions)]}')
+        print(f'faulty actions indices: {faulty_actions_indices}')
 
     # ### generate observation mask
     observation_mask = generate_observation_mask(len(observations), percent_visible_states)
     # ### calculate largest hidden gap
     longest_hidden_state_sequence = calculate_largest_hidden_gap(observation_mask)
-    print(f'OBSERVATION MASK: {str(observation_mask)}')
-    print(f'LONGEST HIDDEN STATE SEQUENCE: {longest_hidden_state_sequence}')
-    print(f'HIDDEN STATES: {[oi for oi in range(len(observations)) if oi not in observation_mask]}')
-    print(f'observed {len(observation_mask)}/{len(observations)} states')
+
+    if debug_print:
+        print(f'OBSERVATION MASK: {str(observation_mask)}')
+        print(f'LONGEST HIDDEN STATE SEQUENCE: {longest_hidden_state_sequence}')
+        print(f'HIDDEN STATES: {[oi for oi in range(len(observations)) if oi not in observation_mask]}')
+        print(f'observed {len(observation_mask)}/{len(observations)} states')
 
     # ### mask the states list
     masked_observations = mask_states(observations, observation_mask)
@@ -773,23 +778,36 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
     candidate_fault_modes = prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator)
 
     # ### run SIF
-    print("here? 14")
 
-    raw_output = fault_identification_non_deterministic_PO(debug_print=debug_print,
-                                                           render_mode=render_mode,
-                                                           instance_seed=instance_seed,
-                                                           ml_model_name=ml_model_name,
-                                                           domain_name=domain_name,
-                                                           observations=masked_observations,
-                                                           candidate_fault_modes=candidate_fault_modes,
-                                                           fault_rate=fault_probability,
-                                                           epsilon = epsilon)
+    if unknown_fault_rate:
+        raw_output = fault_identification_non_deterministic_PO_unknown_fault_rate(
+            debug_print=debug_print,
+            render_mode=render_mode,
+            instance_seed=instance_seed,
+            ml_model_name=ml_model_name,
+            domain_name=domain_name,
+            observations=masked_observations,
+            candidate_fault_modes=candidate_fault_modes,
+            epsilon=epsilon,
+            fault_rate_candidates=fault_rate_candidates
+        )
+    else:
+        raw_output = fault_identification_non_deterministic_PO(
+            debug_print=debug_print,
+            render_mode=render_mode,
+            instance_seed=instance_seed,
+            ml_model_name=ml_model_name,
+            domain_name=domain_name,
+            observations=masked_observations,
+            candidate_fault_modes=candidate_fault_modes,
+            fault_rate=fault_probability,
+            epsilon=epsilon
+        )
 
     execution_fault_in_top1 = execution_fault_mode_name in [fault for fault, _ in raw_output["sorted_faults"][:1]]
     execution_fault_in_top2 = execution_fault_mode_name in [fault for fault, _ in raw_output["sorted_faults"][:2]]
     execution_fault_in_top3 = execution_fault_mode_name in [fault for fault, _ in raw_output["sorted_faults"][:3]]
 
-    print("here? 2")
 
     # raw_output["sorted_faults"] is list[(fault_key, score)], best-first
     sorted_faults = raw_output["sorted_faults"]
@@ -807,11 +825,26 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
     score_gap_top_minus_real = None if real_score is None else (top_score - real_score)
 
     raw_output["real_fault_rank"] = real_rank
-    print(f"real fault rank {real_rank}")
+
+    print(f"Real Fault Rank {real_rank}")
     raw_output["real_fault_score"] = real_score
     raw_output["top_minus_real_score_gap"] = score_gap_top_minus_real
     raw_output["top_fault_key"] = top_fault
     raw_output["top_fault_score"] = top_score
+
+    if "best_rate_per_fault" in raw_output:
+        real_fault_estimated_rate = (
+            raw_output["best_rate_per_fault"]
+            .get(execution_fault_mode_name)
+        )
+
+        top_fault_estimated_rate = (
+            raw_output["best_rate_per_fault"]
+            .get(top_fault)
+        )
+
+        raw_output["real_fault_estimated_rate"] = real_fault_estimated_rate
+        raw_output["top_fault_estimated_rate"] = top_fault_estimated_rate
 
     raw_output["percent_visible_states"] = percent_visible_states
     raw_output["num_observed_states"] = len(observation_mask)
@@ -871,9 +904,7 @@ def run_SIF_single_experiment(domain_name,
     candidate_fault_modes = prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator)
 
     # ### run SIF
-    print("here? 1")
     raw_output = SIF(debug_print=debug_print, render_mode=render_mode, instance_seed=instance_seed, ml_model_name=ml_model_name, domain_name=domain_name, observations=masked_observations, candidate_fault_modes=candidate_fault_modes)
-    print("here? 2")
 
     # ### ranking the diagnoses
     output = rank_diagnoses_SFM(raw_output, registered_actions, debug_print)

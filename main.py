@@ -41,7 +41,29 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epsilon", type=float, required=True)
+
+    parser.add_argument(
+        "--epsilon",
+        type=float,
+        default=0.03,
+        help="Adaptive MC confidence interval threshold"
+    )
+
+    parser.add_argument(
+        "-ufr",
+        "--unknown_fault_rate",
+        action="store_true",
+        help="Run PO diagnosis with unknown fault rate estimation"
+    )
+
+    parser.add_argument(
+        "-n",
+        "--maps_num",
+        type=int,
+        default=49,
+        help="Number of map/policy pairs to run"
+    )
+
     args = parser.parse_args()
 
     try:
@@ -59,7 +81,11 @@ if __name__ == '__main__':
 
         # single_experiment_FrozenLake_SIF()
 
-        multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon = args.epsilon)
+        multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(
+        unknown_fault_rate=args.unknown_fault_rate,
+        maps_num=args.maps_num
+        )
+
         # single_experiment_FrozenLake_NON_DETERMINSTIC()
         # single_experiment_FrozenLake_SIF()
         # multiple_experiments_FrozenLake_SIF()

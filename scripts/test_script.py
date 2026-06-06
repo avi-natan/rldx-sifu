@@ -6,7 +6,7 @@ import glob
 LOG_DIR = "C:/Users/ahmad/Downloads/xl_run1_results/xl_outputs"
 
 
-EPSILON_PATTERN = re.compile(r"epsilon1\s*=\s*([0-9.]+)")
+EPSILON_PATTERN = re.compile(r"Finished epsilon\s*=\s*([0-9.]+)")
 MAX_HIT_PATTERN = "MAX HIT |"
 
 

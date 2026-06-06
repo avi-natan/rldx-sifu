@@ -17,7 +17,7 @@ def execute(domain_name,
             ml_model_name,
             fault_mode_generator,
             max_exec_len):
-    print(f'executing with fault mode: {execution_fault_mode_name}\n===============================')
+    print(f'executing with fault mode: {execution_fault_mode_name}\n')
 
     # initialize environment
     env = make_wrapped_env(domain_name, render_mode)
@@ -39,7 +39,6 @@ def execute(domain_name,
     exec_len = 1
     obs, _ = env.reset()
     rng = random.Random(instance_seed)
-    print("here")
 
     while not done and exec_len < max_exec_len:
         # print(f"-current state is {obs}-")

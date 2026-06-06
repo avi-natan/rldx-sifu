@@ -59,8 +59,7 @@ def plot_avg_rank_vs_epsilon(records):
 
     plt.figure()
     plt.plot(xs, ys, "o-")
-    ticks = np.arange(min(xs), max(xs) + 0.005, 0.005)
-    plt.xticks(ticks, rotation=60)
+    plt.xticks(xs, rotation=90)
     plt.xlabel("Epsilon")
     plt.ylabel("Average real fault rank")
     plt.title("Epsilon vs average real fault rank")

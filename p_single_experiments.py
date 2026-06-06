@@ -782,19 +782,36 @@ def plot_num_gaps_vs_visibility_rate(records, title="Number of gaps vs visibilit
     for x, y, n in zip(xs, ys, counts):
         plt.annotate(str(n), (x, y), textcoords="offset points", xytext=(0, 6), ha="center")
 
-def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.02):
+def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_rate=False, maps_num=49):
 
     global HARD_CODED_POLICY
     loaded = load_pairs_from_json("frozenlake_100_pairs_risk_averse_slippery.json")
     diagnosis_runtimes_ms = []
     records = []
 
-    NUM_TRIES = 49
-    SKIP_PROB = 0.5  # skip 50% of combinations
+    if unknown_fault_rate:
+        fault_rate_candidates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        fault_rate_candidates = [0.1, 0.3, 0.5, 0.7, 0.8]
+    else:
+        fault_rate_candidates = None
 
-    print(f"run multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO with {epsilon}")
 
-    for i in range(NUM_TRIES):
+
+    NUM_MAPS = maps_num
+
+    msg = (
+        f"Running PO diagnosis | "
+        f"epsilon={epsilon} | "
+        f"unknown_fault_rate={unknown_fault_rate} | "
+        f"num_maps={NUM_MAPS}"
+    )
+
+    if fault_rate_candidates is not None:
+        msg += f" | fault_rate_candidates={fault_rate_candidates}"
+
+    print(msg+ "\n\n")
+
+    for i in range(NUM_MAPS):
 
         map_desc, hardcoded_policy = loaded[i]
         DOMAIN_KWARGS["FrozenLake_v1"]["desc"] = map_desc
@@ -802,7 +819,7 @@ def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.02):
         h_rl_models.HARD_CODED_POLICY = hardcoded_policy
         now = datetime.now()
         dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
-        print(f'{dt_string}: try {i}/{NUM_TRIES}')
+        print(f'================================= {dt_string}: MAP {i+1}/{NUM_MAPS} START =================================')
 
         domain_name = "FrozenLake_v1"
         ml_model_name = "PPO"                         # "PPO", "DQN"
@@ -842,6 +859,8 @@ def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.02):
         for percent_visible_states in percent_visible_states_list:
             for fault_rate in fault_rate_list:
 
+                print(f'======================= START SINGLE EXPERIMENT MAP {i + 1}/{NUM_MAPS} with FR={fault_rate}, VR={percent_visible_states} =======================')
+
                 output = run_NON_DETERMINSTIC_single_experiment_PO( domain_name=domain_name,
                                                                  ml_model_name=ml_model_name,
                                                                  render_mode=render_mode,
@@ -853,7 +872,9 @@ def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.02):
                                                                  percent_visible_states=percent_visible_states,
                                                                  possible_fault_mode_names=possible_fault_mode_names,
                                                                  num_candidate_fault_modes=num_candidate_fault_modes,
-                                                                 epsilon = epsilon)
+                                                                 epsilon = epsilon,
+                                                                 unknown_fault_rate=unknown_fault_rate,
+                                                                 fault_rate_candidates=fault_rate_candidates)
                 if not output:
                     continue
 
@@ -866,29 +887,50 @@ def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.02):
 
                 records.append(output)
 
-    file_suffix = str(epsilon).replace(".", "_")
-    exper_write_records_to_excel_ind(
-        records,
-        f"frozen_lake_non_deterministic_PO_epsilon_{file_suffix}"
+
+                print(f'=========================== END SINGLE EXPERIMENT MAP {i + 1}/{NUM_MAPS} with FR={fault_rate}, VR{percent_visible_states} ===========================')
+
+        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+        print(f'======================================= {dt_string}: MAP {i+1}/{NUM_MAPS} END =======================================')
+
+
+    from datetime import timedelta
+
+    total_diagnosis_time_sec = sum(
+        r["diagnosis_time_sec"]
+        for r in records
     )
 
-    """
-    plot_sorted_lengths_running_avg(records)
-    plot_binned_avg_rank(records)
-    plot_rank_vs_fault_occurrences_scatter(records)
-    plot_avg_rank_vs_fault_rate(records)
+    avg_diagnosis_time_sec = (
+            total_diagnosis_time_sec / len(records)
+    )
 
-    plot_rank_vs_visibility_rate(records)
-    plot_rank_vs_num_observed_states(records)
-    plot_rank_vs_largest_gap(records)
-    plot_avg_rank_vs_visibility_rate(records)
-    plot_avg_time_vs_visibility_rate(records)
-    plot_avg_gap_time_vs_visibility_rate(records)
-    plot_num_gaps_vs_visibility_rate(records)
+    print(f"\nNumber of diagnosis runs: {len(records)}")
 
-    save_all_plots("frozenlake_rank")
-    plt.show()
-    """
+    # timedelta prints 5:42:17 -> 5h, 42 min, 17 sec
+    print(
+        f"Total diagnosis time: "
+        f"{timedelta(seconds=int(total_diagnosis_time_sec))} "
+        f"({total_diagnosis_time_sec:.2f} sec)"
+    )
+
+    print(
+        f"Average diagnosis time: "
+        f"{timedelta(seconds=int(avg_diagnosis_time_sec))} "
+        f"({avg_diagnosis_time_sec:.2f} sec)"
+    )
+
+    file_suffix = str(epsilon).replace(".", "_")
+
+    if unknown_fault_rate:
+        method_suffix = "UN_known_fault_rate"
+    else:
+        method_suffix = "known_fault_rate"
+
+    exper_write_records_to_excel_ind(
+        records,
+        f"frozen_lake_non_deterministic_PO_{method_suffix}_epsilon_{file_suffix}"
+    )
 
     for e in diagnosis_runtimes_ms:
         print(math.floor(e))
