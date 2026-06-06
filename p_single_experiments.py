@@ -782,6 +782,74 @@ def plot_num_gaps_vs_visibility_rate(records, title="Number of gaps vs visibilit
     for x, y, n in zip(xs, ys, counts):
         plt.annotate(str(n), (x, y), textcoords="offset points", xytext=(0, 6), ha="center")
 
+
+
+def single_experiment_pong(epsilon=0.03, unknown_fault_rate=False):
+
+    if unknown_fault_rate:
+        fault_rate_candidates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        fault_rate_candidates = [0.1, 0.3, 0.5, 0.7, 0.8]
+    else:
+        fault_rate_candidates = None
+
+    records = []
+    msg = (f"Running pong PO diagnosis")
+    print(msg+ "\n")
+    now = datetime.now()
+    dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+    print(f"date: {dt_string}")
+
+    domain_name = "ALE/Pong_v5"
+    ml_model_name = "PPO"  # "PPO", "DQN"
+    render_mode = "rgb_array"  # "human", "rgb_array"
+    max_exec_len = 200
+    debug_print = True
+    instance_seed = 10
+    num_candidate_fault_modes = 10
+
+    # actions = [0, 1, 2, 3, 4, 5]
+    rng = random.Random(instance_seed)
+    possible_fault_mode_names = [
+        "[2, 1, 2, 3, 4, 5]",
+        "[3, 1, 2, 3, 4, 5]",
+        "[0, 1, 0, 3, 4, 5]",
+        "[0, 1, 3, 3, 4, 5]",
+        "[0, 1, 2, 0, 4, 5]",
+        "[0, 1, 2, 2, 4, 5]",
+
+        "[0, 1, 3, 2, 4, 5]",
+        "[2, 1, 0, 3, 4, 5]",
+        "[3, 1, 2, 0, 4, 5]",
+        "[2, 1, 3, 2, 4, 5]",
+        "[3, 1, 3, 2, 4, 5]",
+
+        "[2, 1, 0, 0, 4, 5]",
+        "[2, 1, 0, 2, 4, 5]",
+        "[3, 1, 0, 0, 4, 5]",
+        "[3, 1, 3, 0, 4, 5]"
+    ]
+
+    execution_fault_mode_name = rng.choice(possible_fault_mode_names)
+
+    # 1.0 mean Non-intermittent fault - faults always occur
+    fault_rate_list = [0.5, 0.8]
+    percent_visible_states_list = [20, 40, 60, 80, 100]
+
+    output = run_NON_DETERMINSTIC_single_experiment_PO(domain_name=domain_name,
+                                                       ml_model_name=ml_model_name,
+                                                       render_mode=render_mode,
+                                                       max_exec_len=max_exec_len,
+                                                       debug_print=debug_print,
+                                                       execution_fault_mode_name=execution_fault_mode_name,
+                                                       instance_seed=instance_seed,
+                                                       fault_probability=fault_rate_list[1],
+                                                       percent_visible_states=percent_visible_states_list[4],
+                                                       possible_fault_mode_names=possible_fault_mode_names,
+                                                       num_candidate_fault_modes=num_candidate_fault_modes,
+                                                       epsilon=epsilon,
+                                                       unknown_fault_rate=unknown_fault_rate,
+                                                       fault_rate_candidates=fault_rate_candidates)
+
 def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_rate=False, maps_num=49):
 
     global HARD_CODED_POLICY

@@ -121,6 +121,29 @@ class FrozenLakeSetStepWrapper(gym.Wrapper):
         raw_state = self.unwrapped.s
         return raw_state, reward, done, trunc, info
 
+class PongRamSetStepWrapper(gym.Wrapper):
+    def __init__(self, env):
+        super().__init__(env)
+
+    def reset(self, seed=None):
+        obs, info = self.env.reset(seed=seed)
+        raw_state = self.get_state()
+        return raw_state, info
+
+    def get_state(self):
+        return {
+            "ale_state": self.unwrapped.ale.cloneState(),
+            "ram": self.unwrapped.ale.getRAM().copy(),
+        }
+
+    def set_state(self, raw_state):
+        self.unwrapped.ale.restoreState(raw_state["ale_state"])
+
+    def step(self, action):
+        obs, reward, done, trunc, info = self.env.step(action)
+        raw_state = self.get_state()
+        return raw_state, reward, done, trunc, info
+
 
 
 wrappers = {
@@ -128,7 +151,8 @@ wrappers = {
     "CartPole_v1": CartPoleSetStepWrapper,
     "MountainCar_v0": MountainCarSetStepWrapper,
     "Taxi_v3": TaxiSetStepWrapper,
-    "FrozenLake_v1": FrozenLakeSetStepWrapper
+    "FrozenLake_v1": FrozenLakeSetStepWrapper,
+    "ALE/Pong_v5": PongRamSetStepWrapper
 }
 
 FROZENLAKE_DESC = [
@@ -143,9 +167,16 @@ FROZENLAKE_DESC = [
 ]
 FROZENLAKE_SLIPPERY = True
 
+
 DOMAIN_KWARGS = {
     "FrozenLake_v1": {"is_slippery": FROZENLAKE_SLIPPERY,
-                      "desc": FROZENLAKE_DESC}
+                      "desc": FROZENLAKE_DESC},
+
+    "ALE/Pong_v5": {
+        "obs_type": "ram",
+        "frameskip": 1,
+        "repeat_action_probability": 0.25,
+    },
 }
 
 
