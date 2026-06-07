@@ -927,10 +927,13 @@ def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fau
     else:
         method_suffix = "known_fr"
 
+    file_path = f"frozen_lake_non_deterministic_PO_{method_suffix}_epsilon_{file_suffix}_MAPS_{maps_num}"
+
     exper_write_records_to_excel_ind(
         records,
-        f"frozen_lake_non_deterministic_PO_{method_suffix}_epsilon_{file_suffix}_MAPS_{maps_num}"
+        file_path
     )
+    print(f"file was written at: {file_path}")
 
     for e in diagnosis_runtimes_ms:
         print(math.floor(e))

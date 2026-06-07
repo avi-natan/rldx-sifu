@@ -81,10 +81,17 @@ if __name__ == '__main__':
 
         # single_experiment_FrozenLake_SIF()
 
+        print("At main")
+        print(f"Running with epsilon={args.epsilon}")
+        print(f"unknown_fault_rate={args.unknown_fault_rate}")
+        print(f"maps_num={args.maps_num}")
+
         multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(
-        unknown_fault_rate=args.unknown_fault_rate,
-        maps_num=args.maps_num
+            epsilon=args.epsilon,
+            unknown_fault_rate=args.unknown_fault_rate,
+            maps_num=args.maps_num
         )
+
 
         # single_experiment_FrozenLake_NON_DETERMINSTIC()
         # single_experiment_FrozenLake_SIF()
