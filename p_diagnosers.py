@@ -415,6 +415,8 @@ def simulate_m_traces_adaptive_monte_carlo(starting_state, observed_next_state, 
 
 
     return {
+                "min_tries": min_tries,
+                "max_tries": max_tries,
                 "num_of_hits": num_of_hits,
                 "num_of_tries": curr_num_of_tries,
                 "p_hat": p_hat,
@@ -613,25 +615,42 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
     output["extra_output"] = extra_output
 
     total_calls = len(adaptive_stats)
+    avg_tries = sum(s["num_of_tries"] for s in adaptive_stats) / total_calls
+    adaptive_max_tries_avg = sum(s["max_tries"] for s in adaptive_stats) / total_calls
+    adaptive_min_tries_avg = sum(s["min_tries"] for s in adaptive_stats) / total_calls
+    max_hits = sum(1 for s in adaptive_stats if s["stop_reason"] == "max_tries")
+    conf_hits = total_calls - max_hits
 
-    if total_calls > 0:
-        avg_tries = sum(s["num_of_tries"] for s in adaptive_stats) / total_calls
-        max_hits = sum(1 for s in adaptive_stats if s["stop_reason"] == "max_tries")
-        conf_hits = total_calls - max_hits
+    margins = [
+        s["margin"]
+        for s in adaptive_stats
+        if s["margin"] is not None
+    ]
 
-        print("\n========= ADAPTIVE MC DEBUG =========")
-        print(f"Total calls: {total_calls}")
-        print(f"Avg tries: {avg_tries:.2f}")
-        print(f"Confidence stops: {conf_hits}")
-        print(f"Max stops: {max_hits}")
-        print(f"Max stop rate: {max_hits / total_calls:.3f}")
+    avg_margin = sum(margins) / len(margins) if margins else None
 
-        output["adaptive_total_calls"] = total_calls
-        output["adaptive_avg_tries"] = avg_tries
-        output["adaptive_confidence_stops"] = conf_hits
-        output["adaptive_max_stops"] = max_hits
-        output["adaptive_max_stop_rate"] = max_hits / total_calls
+    avg_p_hat = (
+        sum(s["p_hat"] for s in adaptive_stats) / len(adaptive_stats)
+        if adaptive_stats else None
+    )
 
+    output["adaptive_total_calls"] = total_calls
+    output["adaptive_avg_real_tries"] = avg_tries
+    output["adaptive_max_tries_avg"] = adaptive_max_tries_avg
+    output["adaptive_min_tries_avg"] = adaptive_min_tries_avg
+    output["adaptive_max_stops"] = max_hits
+    output["adaptive_conf_stops"] = conf_hits
+    output["adaptive_max_stop_rate"] = max_hits / total_calls
+    output["adaptive_ever_hit_max"] = bool(max_hits > 0)
+    output["adaptive_avg_margin"] = avg_margin
+    output["adaptive_avg_p_hat"] = avg_p_hat
+
+    print("\n========= ADAPTIVE MC DEBUG =========")
+    print(f"Total calls: {total_calls}")
+    print(f"Avg tries: {avg_tries:.2f}")
+    print(f"Confidence stops: {conf_hits}")
+    print(f"Max stops: {max_hits}")
+    print(f"Max stop rate: {max_hits / total_calls:.3f}")
 
     return output
 
@@ -792,12 +811,41 @@ def fault_identification_non_deterministic_PO(debug_print, render_mode,
     output["observations_len"] = len(observations)
     output["extra_output"] = extra_output
 
-    ### debug
     total_calls = len(adaptive_stats)
-
-    avg_tries = sum(s["num_of_tries"] for s in adaptive_stats) / total_calls
+    adaptive_total_real_tries = sum(
+        s["num_of_tries"]
+        for s in adaptive_stats
+    )
+    avg_tries = adaptive_total_real_tries / total_calls
+    adaptive_max_tries_avg = sum(s["max_tries"] for s in adaptive_stats) / total_calls
+    adaptive_min_tries_avg = sum(s["min_tries"] for s in adaptive_stats) / total_calls
     max_hits = sum(1 for s in adaptive_stats if s["stop_reason"] == "max_tries")
     conf_hits = total_calls - max_hits
+
+    margins = [
+        s["margin"]
+        for s in adaptive_stats
+        if s["margin"] is not None
+    ]
+
+    avg_margin = sum(margins) / len(margins) if margins else None
+
+    avg_p_hat = (
+        sum(s["p_hat"] for s in adaptive_stats) / len(adaptive_stats)
+        if adaptive_stats else None
+    )
+
+    output["adaptive_total_calls"] = total_calls
+    output["adaptive_avg_real_tries"] = avg_tries
+    output["adaptive_total_real_tries"] = adaptive_total_real_tries
+    output["adaptive_max_tries_avg"] = adaptive_max_tries_avg
+    output["adaptive_min_tries_avg"] = adaptive_min_tries_avg
+    output["adaptive_max_stops"] = max_hits
+    output["adaptive_conf_stops"] = conf_hits
+    output["adaptive_max_stop_rate"] = max_hits / total_calls
+    output["adaptive_ever_hit_max"] = bool(max_hits > 0)
+    output["adaptive_avg_margin"] = avg_margin
+    output["adaptive_avg_p_hat"] = avg_p_hat
 
     print("\n========= ADAPTIVE MC DEBUG =========")
     print(f"Total calls: {total_calls}")
