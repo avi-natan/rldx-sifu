@@ -6,7 +6,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-INPUT_DIR = "C:/Users/ahmad/Downloads/experiments_outputs/several_epsilons_run/try2/xl_results"
+try_num = 2
+INPUT_DIR = f"C:/Users/ahmad/Downloads/experiments_outputs/several_epsilons_run/try{try_num}/xl_results"
 PLOTS_DIR = "aggregated_plots"
 
 def save_current_plot(filename):

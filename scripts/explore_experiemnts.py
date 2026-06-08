@@ -4,8 +4,8 @@ import glob
 import pandas as pd
 import numpy as np
 
-
-INPUT_DIR = "C:/Users/ahmad/Downloads/experiments_outputs/several_epsilons_run/try2/xl_results"
+try_num = 2
+INPUT_DIR = f"C:/Users/ahmad/Downloads/experiments_outputs/several_epsilons_run/try{try_num}/xl_results"
 
 
 def extract_epsilon_from_filename(path):
@@ -18,6 +18,12 @@ def extract_epsilon_from_filename(path):
 def safe_mean(values):
     values = [float(v) for v in values if v is not None and not pd.isna(v)]
     return float(np.mean(values)) if values else None
+
+
+def fmt(v, digits=3):
+    if v is None or pd.isna(v):
+        return "NA"
+    return f"{v:.{digits}f}"
 
 
 def load_all_records(input_dir):
@@ -39,6 +45,13 @@ def load_all_records(input_dir):
     return records, xlsx_files
 
 
+def print_section(title):
+    print()
+    print("=" * 120)
+    print(title)
+    print("=" * 120)
+
+
 def print_columns_from_one_file(xlsx_files):
     if not xlsx_files:
         print("No xlsx files found.")
@@ -47,9 +60,9 @@ def print_columns_from_one_file(xlsx_files):
     path = xlsx_files[0]
     df = pd.read_excel(path)
 
-    print("\nColumns from file:")
+    print_section("COLUMNS FROM ONE FILE")
     print(path)
-    print("--------------------------------")
+    print()
 
     for col in df.columns:
         print(col)
@@ -71,6 +84,9 @@ def print_avg_statistics_per_epsilon(records):
         "adaptive_avg_p_hat",
         "num_gaps",
         "avg_gap_time",
+        "execution_fault_in_top1",
+        "execution_fault_in_top2",
+        "execution_fault_in_top3",
     ]
 
     for r in records:
@@ -89,61 +105,45 @@ def print_avg_statistics_per_epsilon(records):
 
         for col in columns_to_collect:
             v = r.get(col)
-
             if v is not None and not pd.isna(v):
                 eps_stats[eps][col].append(float(v))
 
-    print("\nAverage statistics per epsilon")
-    print("-" * 180)
+    print_section("EPSILON SUMMARY")
 
-    print(
-        "epsilon\t"
-        "n\t"
-        "avg_rank\t"
-        "avg_time_sec\t"
-        "avg_real_tries\t"
-        "avg_total_real_tries\t"
-        "avg_max_stop_rate\t"
-        "avg_margin\t"
-        "avg_total_calls\t"
-        "avg_max_stops\t"
-        "avg_conf_stops\t"
-        "avg_p_hat\t"
-        "avg_num_gaps\t"
-        "avg_gap_time"
+    header = (
+        f"{'eps':>7} "
+        f"{'rank':>7} "
+        f"{'time(s)':>10} "
+        f"{'tries':>9} "
+        f"{'tot_tries':>12} "
+        f"{'margin':>8} "
+        f"{'max_stop':>9} "
+        f"{'gaps':>7} "
+        f"{'gap_time':>10} "
+        f"{'calls':>8} "
+        f"{'p_hat':>8} "
+        f"{'n':>5}"
     )
+
+    print(header)
+    print("-" * len(header))
 
     for eps in sorted(eps_stats.keys()):
         s = eps_stats[eps]
 
-        avg_rank = safe_mean(s["real_fault_rank"])
-        avg_time = safe_mean(s["diagnosis_time_sec"])
-        avg_real_tries = safe_mean(s["adaptive_avg_real_tries"])
-        avg_total_real_tries = safe_mean(s["adaptive_total_real_tries"])
-        avg_max_stop_rate = safe_mean(s["adaptive_max_stop_rate"])
-        avg_margin = safe_mean(s["adaptive_avg_margin"])
-        avg_total_calls = safe_mean(s["adaptive_total_calls"])
-        avg_max_stops = safe_mean(s["adaptive_max_stops"])
-        avg_conf_stops = safe_mean(s["adaptive_conf_stops"])
-        avg_p_hat = safe_mean(s["adaptive_avg_p_hat"])
-        avg_num_gaps = safe_mean(s["num_gaps"])
-        avg_gap_time = safe_mean(s["avg_gap_time"])
-
         print(
-            f"{eps}\t"
-            f"{s['n']}\t"
-            f"{avg_rank:.6f}\t"
-            f"{avg_time:.6f}\t"
-            f"{avg_real_tries:.2f}\t"
-            f"{avg_total_real_tries:.2f}\t"
-            f"{avg_max_stop_rate:.6f}\t"
-            f"{avg_margin:.6f}\t"
-            f"{avg_total_calls:.2f}\t"
-            f"{avg_max_stops:.2f}\t"
-            f"{avg_conf_stops:.2f}\t"
-            f"{avg_p_hat:.6f}\t"
-            f"{avg_num_gaps:.2f}\t"
-            f"{avg_gap_time:.6f}"
+            f"{eps:7.4f} "
+            f"{fmt(safe_mean(s['real_fault_rank']), 3):>7} "
+            f"{fmt(safe_mean(s['diagnosis_time_sec']), 2):>10} "
+            f"{fmt(safe_mean(s['adaptive_avg_real_tries']), 0):>9} "
+            f"{fmt(safe_mean(s['adaptive_total_real_tries']), 0):>12} "
+            f"{fmt(safe_mean(s['adaptive_avg_margin']), 4):>8} "
+            f"{fmt(safe_mean(s['adaptive_max_stop_rate']), 3):>9} "
+            f"{fmt(safe_mean(s['num_gaps']), 1):>7} "
+            f"{fmt(safe_mean(s['avg_gap_time']), 3):>10} "
+            f"{fmt(safe_mean(s['adaptive_total_calls']), 1):>8} "
+            f"{fmt(safe_mean(s['adaptive_avg_p_hat']), 3):>8} "
+            f"{s['n']:5d}"
         )
 
 
@@ -173,28 +173,26 @@ def print_top_accuracy_per_epsilon(records):
         if pd.notna(r.get("execution_fault_in_top3")):
             eps_stats[eps]["top3"].append(float(r["execution_fault_in_top3"]))
 
-    print("\nTop-k accuracy per epsilon")
-    print("-" * 80)
+    print_section("TOP-K ACCURACY PER EPSILON")
 
-    print(
-        "epsilon\t"
-        "top1_acc\t"
-        "top2_acc\t"
-        "top3_acc"
+    header = (
+        f"{'eps':>7} "
+        f"{'top1':>7} "
+        f"{'top2':>7} "
+        f"{'top3':>7}"
     )
+
+    print(header)
+    print("-" * len(header))
 
     for eps in sorted(eps_stats.keys()):
         s = eps_stats[eps]
 
-        top1 = safe_mean(s["top1"])
-        top2 = safe_mean(s["top2"])
-        top3 = safe_mean(s["top3"])
-
         print(
-            f"{eps}\t"
-            f"{top1:.6f}\t"
-            f"{top2:.6f}\t"
-            f"{top3:.6f}"
+            f"{eps:7.4f} "
+            f"{fmt(safe_mean(s['top1']), 3):>7} "
+            f"{fmt(safe_mean(s['top2']), 3):>7} "
+            f"{fmt(safe_mean(s['top3']), 3):>7}"
         )
 
 
@@ -240,37 +238,38 @@ def print_statistics_per_visibility_and_epsilon(records):
         if pd.notna(r.get("adaptive_avg_margin")):
             stats[key]["margin"].append(float(r["adaptive_avg_margin"]))
 
-    print("\nStatistics per visibility and epsilon")
-    print("-" * 140)
+    print_section("VISIBILITY × EPSILON")
 
-    print(
-        "visibility\t"
-        "epsilon\t"
-        "n\t"
-        "avg_rank\t"
-        "avg_time_sec\t"
-        "avg_total_real_tries\t"
-        "avg_real_tries\t"
-        "avg_max_stop_rate\t"
-        "avg_margin"
+    header = (
+        f"{'vis':>5} "
+        f"{'eps':>7} "
+        f"{'rank':>7} "
+        f"{'time(s)':>10} "
+        f"{'tries':>9} "
+        f"{'tot_tries':>12} "
+        f"{'margin':>8} "
+        f"{'max_stop':>9} "
+        f"{'n':>5}"
     )
+
+    print(header)
+    print("-" * len(header))
 
     for key in sorted(stats.keys()):
         vis, eps = key
         s = stats[key]
-
         n = len(s["rank"])
 
         print(
-            f"{vis}\t"
-            f"{eps}\t"
-            f"{n}\t"
-            f"{safe_mean(s['rank']):.6f}\t"
-            f"{safe_mean(s['time']):.6f}\t"
-            f"{safe_mean(s['total_tries']):.2f}\t"
-            f"{safe_mean(s['avg_tries']):.2f}\t"
-            f"{safe_mean(s['max_stop_rate']):.6f}\t"
-            f"{safe_mean(s['margin']):.6f}"
+            f"{vis:5.0f} "
+            f"{eps:7.4f} "
+            f"{fmt(safe_mean(s['rank']), 3):>7} "
+            f"{fmt(safe_mean(s['time']), 2):>10} "
+            f"{fmt(safe_mean(s['avg_tries']), 0):>9} "
+            f"{fmt(safe_mean(s['total_tries']), 0):>12} "
+            f"{fmt(safe_mean(s['margin']), 4):>8} "
+            f"{fmt(safe_mean(s['max_stop_rate']), 3):>9} "
+            f"{n:5d}"
         )
 
 
@@ -316,37 +315,38 @@ def print_statistics_per_fault_rate_and_epsilon(records):
         if pd.notna(r.get("adaptive_avg_margin")):
             stats[key]["margin"].append(float(r["adaptive_avg_margin"]))
 
-    print("\nStatistics per fault rate and epsilon")
-    print("-" * 140)
+    print_section("FAULT RATE × EPSILON")
 
-    print(
-        "fault_rate\t"
-        "epsilon\t"
-        "n\t"
-        "avg_rank\t"
-        "avg_time_sec\t"
-        "avg_total_real_tries\t"
-        "avg_real_tries\t"
-        "avg_max_stop_rate\t"
-        "avg_margin"
+    header = (
+        f"{'fr':>5} "
+        f"{'eps':>7} "
+        f"{'rank':>7} "
+        f"{'time(s)':>10} "
+        f"{'tries':>9} "
+        f"{'tot_tries':>12} "
+        f"{'margin':>8} "
+        f"{'max_stop':>9} "
+        f"{'n':>5}"
     )
+
+    print(header)
+    print("-" * len(header))
 
     for key in sorted(stats.keys()):
         fr, eps = key
         s = stats[key]
-
         n = len(s["rank"])
 
         print(
-            f"{fr}\t"
-            f"{eps}\t"
-            f"{n}\t"
-            f"{safe_mean(s['rank']):.6f}\t"
-            f"{safe_mean(s['time']):.6f}\t"
-            f"{safe_mean(s['total_tries']):.2f}\t"
-            f"{safe_mean(s['avg_tries']):.2f}\t"
-            f"{safe_mean(s['max_stop_rate']):.6f}\t"
-            f"{safe_mean(s['margin']):.6f}"
+            f"{fr:5.1f} "
+            f"{eps:7.4f} "
+            f"{fmt(safe_mean(s['rank']), 3):>7} "
+            f"{fmt(safe_mean(s['time']), 2):>10} "
+            f"{fmt(safe_mean(s['avg_tries']), 0):>9} "
+            f"{fmt(safe_mean(s['total_tries']), 0):>12} "
+            f"{fmt(safe_mean(s['margin']), 4):>8} "
+            f"{fmt(safe_mean(s['max_stop_rate']), 3):>9} "
+            f"{n:5d}"
         )
 
 
@@ -356,10 +356,10 @@ if __name__ == "__main__":
     print(f"Loaded files: {len(xlsx_files)}")
     print(f"Loaded records: {len(records)}")
 
-    print_columns_from_one_file(xlsx_files)
+    # print_columns_from_one_file(xlsx_files)
 
     print_avg_statistics_per_epsilon(records)
-    print_top_accuracy_per_epsilon(records)
+    # print_top_accuracy_per_epsilon(records)
 
     print_statistics_per_visibility_and_epsilon(records)
     print_statistics_per_fault_rate_and_epsilon(records)
