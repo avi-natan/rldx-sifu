@@ -694,7 +694,10 @@ def fault_identification_non_deterministic_PO(
         num_of_observed_states+=1
         current_gap_length = i - last_observed_index
 
-        min_tries = 100 + 10 * current_gap_length
+        # min_tries = 100 + 10 * current_gap_length
+        # batch_size = 50
+        min_tries = 20
+        batch_size = 10
         scale = max(1.0, (0.025 / epsilon) ** 2)
 
         base_max = int(2500 * scale)
@@ -719,7 +722,7 @@ def fault_identification_non_deterministic_PO(
                                                    debug_print,
                                                    min_tries=min_tries,
                                                    max_tries=max_tries,
-                                                   batch_size=50,
+                                                   batch_size=batch_size,
                                                    epsilon=epsilon)
 
             p_hat = max(res["p_hat"], 1e-12)
