@@ -656,10 +656,12 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
 
 
 
-def fault_identification_non_deterministic_PO(debug_print, render_mode,
-                                              instance_seed, ml_model_name,
-                                              domain_name, observations,
-                                              candidate_fault_modes, epsilon, fault_rate = None):
+def fault_identification_non_deterministic_PO(
+        debug_print, render_mode,
+
+        instance_seed, ml_model_name,
+        domain_name, observations,
+        candidate_fault_modes, epsilon, fault_rate = None):
 
     # load trained model as policy
     policy = load_trained_model(domain_name, ml_model_name)

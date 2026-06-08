@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-INPUT_DIR = "C:/Users/ahmad/Downloads/xl_results"
+INPUT_DIR = "C:/Users/ahmad/Downloads/experiments_outputs/several_epsilons_run/try2/xl_results"
 PLOTS_DIR = "aggregated_plots"
 
 def save_current_plot(filename):
@@ -155,6 +155,108 @@ def plot_runtime_vs_visibility(records):
     plt.grid(True)
     save_current_plot("visibility_vs_avg_diagnosis_time.png")
 
+def plot_avg_real_tries_vs_epsilon(records):
+    eps_to_vals = {}
+
+    for r in records:
+        eps = r.get("epsilon")
+        v = r.get("adaptive_avg_real_tries")
+
+        if eps is None or v is None or pd.isna(v):
+            continue
+
+        eps_to_vals.setdefault(float(eps), []).append(float(v))
+
+    xs = sorted(eps_to_vals.keys())
+    ys = [np.mean(eps_to_vals[x]) for x in xs]
+
+    plt.figure()
+    plt.plot(xs, ys, "o-")
+    plt.xticks(xs, rotation=90)
+    plt.xlabel("Epsilon")
+    plt.ylabel("Average real tries per MC call")
+    plt.title("Epsilon vs average real tries")
+    plt.grid(True)
+
+    save_current_plot("epsilon_vs_avg_real_tries.png")
+
+def plot_total_real_tries_vs_epsilon(records):
+    eps_to_vals = {}
+
+    for r in records:
+        eps = r.get("epsilon")
+        v = r.get("adaptive_total_real_tries")
+
+        if eps is None or v is None or pd.isna(v):
+            continue
+
+        eps_to_vals.setdefault(float(eps), []).append(float(v))
+
+    xs = sorted(eps_to_vals.keys())
+    ys = [np.mean(eps_to_vals[x]) for x in xs]
+
+    plt.figure()
+    plt.plot(xs, ys, "o-")
+    plt.xticks(xs, rotation=90)
+    plt.xlabel("Epsilon")
+    plt.ylabel("Average total real tries per diagnosis")
+    plt.title("Epsilon vs total real tries")
+    plt.grid(True)
+
+    save_current_plot("epsilon_vs_total_real_tries.png")
+
+def plot_max_stop_rate_vs_epsilon(records):
+    eps_to_vals = {}
+
+    for r in records:
+        eps = r.get("epsilon")
+        v = r.get("adaptive_max_stop_rate")
+
+        if eps is None or v is None or pd.isna(v):
+            continue
+
+        eps_to_vals.setdefault(float(eps), []).append(float(v))
+
+    xs = sorted(eps_to_vals.keys())
+    ys = [np.mean(eps_to_vals[x]) for x in xs]
+
+    plt.figure()
+    plt.plot(xs, ys, "o-")
+    plt.xticks(xs, rotation=90)
+    plt.xlabel("Epsilon")
+    plt.ylabel("Average max stop rate")
+    plt.title("Epsilon vs max stop rate")
+    plt.grid(True)
+
+    save_current_plot("epsilon_vs_max_stop_rate.png")
+
+def plot_avg_margin_vs_epsilon(records):
+    eps_to_vals = {}
+
+    for r in records:
+        eps = r.get("epsilon")
+        v = r.get("adaptive_avg_margin")
+
+        if eps is None or v is None or pd.isna(v):
+            continue
+
+        eps_to_vals.setdefault(float(eps), []).append(float(v))
+
+    xs = sorted(eps_to_vals.keys())
+    ys = [np.mean(eps_to_vals[x]) for x in xs]
+
+    plt.figure()
+    plt.plot(xs, ys, "o-", label="avg margin")
+    plt.plot(xs, xs, "--", label="epsilon target")
+    plt.xticks(xs, rotation=90)
+    plt.xlabel("Epsilon")
+    plt.ylabel("Margin")
+    plt.title("Epsilon vs average achieved margin")
+    plt.legend()
+    plt.grid(True)
+
+    save_current_plot("epsilon_vs_avg_margin.png")
+
 
 if __name__ == "__main__":
 
@@ -167,5 +269,10 @@ if __name__ == "__main__":
 
     plot_avg_rank_vs_visibility(records)
     plot_runtime_vs_visibility(records)
+
+    plot_avg_real_tries_vs_epsilon(records)
+    plot_total_real_tries_vs_epsilon(records)
+    plot_max_stop_rate_vs_epsilon(records)
+    plot_avg_margin_vs_epsilon(records)
 
     plt.show()
