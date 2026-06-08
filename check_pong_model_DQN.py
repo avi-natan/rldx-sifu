@@ -1,11 +1,11 @@
 import gymnasium as gym
 import numpy as np
-from stable_baselines3 import PPO
+from stable_baselines3 import DQN
 
 
-#MODEL_PATH = "environments/ALE/Pong_v5/models/PPO/pong_ram_ppo_sticky_025_frameskip_1/best_model.zip"
+MODEL_PATH = "environments/ALE/Pong_v5/models/DQN/pong_ram_dqn_sticky_0_25_frameskip_1_steps_9000000_seed_42/best_model.zip"
 # or:
-MODEL_PATH = "environments/ALE/Pong_v5/models/PPO/pong_ram_ppo_sticky_025_frameskip_1/best_model.zip"
+# MODEL_PATH = "environments/ALE/Pong_v5/models/DQN/pong_ram_dqn_sticky_0_25_frameskip_1_steps_3000000_seed_42/final_model.zip"
 
 ENV_ID = "ALE/Pong-v5"
 
@@ -54,7 +54,10 @@ def evaluate_model(model, n_episodes=10):
     print(f"Max reward: {np.max(episode_rewards)}")
 
     print("\n=== Action Counts ===")
-    meanings = make_env().unwrapped.get_action_meanings()
+    env2 = make_env()
+    meanings = env2.unwrapped.get_action_meanings()
+    env2.close()
+
     for i, count in enumerate(action_counts):
         print(f"{i} = {meanings[i]}: {count}")
 
@@ -79,10 +82,10 @@ def watch_model(model):
 
 
 if __name__ == "__main__":
-    print(f"Loading model from: {MODEL_PATH}")
-    model = PPO.load(MODEL_PATH, device="cpu")
+    print(f"Loading DQN model from: {MODEL_PATH}")
+    model = DQN.load(MODEL_PATH, device="cpu")
 
-    evaluate_model(model, n_episodes=10)
+    evaluate_model(model, n_episodes=50)
 
-    # Uncomment if running locally with display:
+    # Uncomment locally if you want to watch:
     watch_model(model)
