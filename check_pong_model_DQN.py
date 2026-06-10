@@ -3,9 +3,9 @@ import numpy as np
 from stable_baselines3 import DQN
 
 
-MODEL_PATH = "environments/ALE/Pong_v5/models/DQN/pong_ram_dqn_sticky_0_25_frameskip_1_steps_9000000_seed_42/best_model.zip"
+MODEL_PATH = "environments/ALE/Pong_v5/models/DQN/pong_ram_dqn_sticky_0_25_frameskip_1_steps_20000000_seed_1/best_model.zip"
 # or:
-# MODEL_PATH = "environments/ALE/Pong_v5/models/DQN/pong_ram_dqn_sticky_0_25_frameskip_1_steps_3000000_seed_42/final_model.zip"
+# MODEL_PATH = "environments/ALE/Pong_v5/models/DQN/pong_ram_dqn_sticky_0_25_frameskip_1_steps_20000000_seed_1/final_model.zip"
 
 ENV_ID = "ALE/Pong-v5"
 
