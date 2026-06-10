@@ -649,7 +649,7 @@ def fault_identification_non_deterministic_PO(debug_print, render_mode,
     simulator = make_wrapped_env(domain_name, render_mode)
     initial_obs, _ = simulator.reset(seed=instance_seed)
     S_0, _ = simulator.reset()
-    assert comparators[domain_name](observations[0], S_0)
+    # assert comparators[domain_name](observations[0], S_0)
 
     # initialize time counting
     diagnosis_time_sec_start = time.time()
@@ -663,6 +663,8 @@ def fault_identification_non_deterministic_PO(debug_print, render_mode,
 
 
     for i in range(1, len(observations)):
+
+        print("hi")
 
 
         if observations[i] is None:

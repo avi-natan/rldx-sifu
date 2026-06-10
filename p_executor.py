@@ -17,6 +17,7 @@ def execute(domain_name,
             ml_model_name,
             fault_mode_generator,
             max_exec_len):
+    debug_print=False
     print(f'executing with fault mode: {execution_fault_mode_name}\n')
 
     # initialize environment
@@ -40,11 +41,24 @@ def execute(domain_name,
     obs, _ = env.reset()
     rng = random.Random(instance_seed)
 
+    for i in range(500):
+
+        action, _ = model.predict(refiners[domain_name](obs), deterministic=DETERMINISTIC)
+        action = int(action)
+        obs, reward, done, trunc, info = env.step(action)
+
     while not done and exec_len < max_exec_len:
         # print(f"-current state is {obs}-")
         trajectory.append(obs)
         if debug_print:
-            print(f'a#:{action_number} [PREVOBS]: {obs.tolist() if not isinstance(obs, int) else obs}')
+            if isinstance(obs, dict) and "ram" in obs:
+                obs_to_print = obs["ram"].tolist()
+            elif isinstance(obs, int):
+                obs_to_print = obs
+            else:
+                obs_to_print = obs.tolist()
+
+            print(f'a#:{action_number} [PREVOBS]: {obs_to_print}')
         action, _ = model.predict(refiners[domain_name](obs), deterministic=DETERMINISTIC)
         action = int(action)
         # print(f"current action is {action}")

@@ -130,7 +130,7 @@ def single_experiment_prepare_inputs_non_determinstic(domain_name,
     trajectory_execution = []
     faulty_actions_indices = []
     num_of_tries = 50
-    while len(faulty_actions_indices) == 0 or len(trajectory_execution) < 60:
+    while len(faulty_actions_indices) == 0 or len(trajectory_execution) < 10:
         trajectory_execution, faulty_actions_indices = execute(domain_name,
                                                                debug_print,
                                                                execution_fault_mode_name,

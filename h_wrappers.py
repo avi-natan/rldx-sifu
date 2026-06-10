@@ -132,12 +132,12 @@ class PongRamSetStepWrapper(gym.Wrapper):
 
     def get_state(self):
         return {
-            "ale_state": self.unwrapped.ale.cloneState(),
+            "ale_state": self.unwrapped.ale.cloneSystemState(),
             "ram": self.unwrapped.ale.getRAM().copy(),
         }
 
     def set_state(self, raw_state):
-        self.unwrapped.ale.restoreState(raw_state["ale_state"])
+        self.unwrapped.ale.restoreSystemState(raw_state["ale_state"])
 
     def step(self, action):
         obs, reward, done, trunc, info = self.env.step(action)

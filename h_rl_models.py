@@ -114,8 +114,12 @@ def load_trained_model(domain_name, ml_model_name, env=None):
         assert HARD_CODED_POLICY is not None, "FrozenLake policy not set"
         return FrozenLakeHardcodedPolicy(HARD_CODED_POLICY)
 
+    print(f"hereee: {domain_name}")
+    print(f"hereee: {ml_model_name}")
+
     models_dir = f"environments/{domain_name}/models/{ml_model_name}"
     model_path = f"{models_dir}/{domain_name}__{ml_model_name}.zip"
+    print(f"hereee3: {model_path}")
     if env is None:
         return models[ml_model_name].load(model_path)
     else:

@@ -784,7 +784,7 @@ def plot_num_gaps_vs_visibility_rate(records, title="Number of gaps vs visibilit
 
 
 
-def single_experiment_pong(epsilon=0.03, unknown_fault_rate=False):
+def single_experiment_pong(epsilon=0.2, unknown_fault_rate=False):
 
     if unknown_fault_rate:
         fault_rate_candidates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
@@ -800,12 +800,12 @@ def single_experiment_pong(epsilon=0.03, unknown_fault_rate=False):
     print(f"date: {dt_string}")
 
     domain_name = "ALE/Pong_v5"
-    ml_model_name = "PPO"  # "PPO", "DQN"
+    ml_model_name = "DQN"  # "PPO", "DQN"
     render_mode = "rgb_array"  # "human", "rgb_array"
-    max_exec_len = 200
+    max_exec_len = 30
     debug_print = True
-    instance_seed = 10
-    num_candidate_fault_modes = 10
+    instance_seed = 11
+    num_candidate_fault_modes = 3
 
     # actions = [0, 1, 2, 3, 4, 5]
     rng = random.Random(instance_seed)
@@ -829,7 +829,14 @@ def single_experiment_pong(epsilon=0.03, unknown_fault_rate=False):
         "[3, 1, 3, 0, 4, 5]"
     ]
 
-    execution_fault_mode_name = rng.choice(possible_fault_mode_names)
+
+    possible_fault_mode_names = [
+        "[2, 1, 2, 3, 4, 5]",
+        "[3, 1, 2, 3, 4, 5]",
+        "[0, 2, 1, 3, 4, 5]"
+    ]
+
+    execution_fault_mode_name = "[0, 2, 1, 3, 4, 5]"
 
     # 1.0 mean Non-intermittent fault - faults always occur
     fault_rate_list = [0.5, 0.8]
@@ -842,8 +849,8 @@ def single_experiment_pong(epsilon=0.03, unknown_fault_rate=False):
                                                        debug_print=debug_print,
                                                        execution_fault_mode_name=execution_fault_mode_name,
                                                        instance_seed=instance_seed,
-                                                       fault_probability=fault_rate_list[1],
-                                                       percent_visible_states=percent_visible_states_list[4],
+                                                       fault_probability=1.0,
+                                                       percent_visible_states=70,
                                                        possible_fault_mode_names=possible_fault_mode_names,
                                                        num_candidate_fault_modes=num_candidate_fault_modes,
                                                        epsilon=epsilon,
