@@ -356,7 +356,7 @@ if __name__ == "__main__":
     print(f"Loaded files: {len(xlsx_files)}")
     print(f"Loaded records: {len(records)}")
 
-    # print_columns_from_one_file(xlsx_files)
+    print_columns_from_one_file(xlsx_files)
 
     print_avg_statistics_per_epsilon(records)
     # print_top_accuracy_per_epsilon(records)
