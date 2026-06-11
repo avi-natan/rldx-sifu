@@ -29,5 +29,6 @@ refiners = {
     "CartPole_v1": cart_pole_refiner,
     "MountainCar_v0": mountain_car_refiner,
     "Taxi_v3": taxi_refiner,
+    "Taxi_v4": taxi_refiner,
     "FrozenLake_v1": frozen_lake_refiner
 }

@@ -33,7 +33,8 @@ from p_single_experiments import (single_experiment_manual, \
                                   single_experiment_FrozenLake_SIF, multiple_experiments_FrozenLake_SIF,
                                   single_experiment_FrozenLake_NON_DETERMINSTIC,
                                   multiple_experiment_FrozenLake_NON_DETERMINSTIC_FO,
-                                  multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO)
+                                  multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO,
+                                  single_experiment_stochastic_Taxi_v4)
 
 
 if __name__ == '__main__':
@@ -86,11 +87,15 @@ if __name__ == '__main__':
         print(f"unknown_fault_rate={args.unknown_fault_rate}")
         print(f"maps_num={args.maps_num}")
 
+        """
         multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(
             epsilon=args.epsilon,
             unknown_fault_rate=args.unknown_fault_rate,
             maps_num=args.maps_num
         )
+        """
+
+        single_experiment_stochastic_Taxi_v4()
 
 
         # single_experiment_FrozenLake_NON_DETERMINSTIC()

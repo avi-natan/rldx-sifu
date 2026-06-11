@@ -26,5 +26,6 @@ comparators = {
     "CartPole_v1": cart_pole_compare,
     "MountainCar_v0": mountain_car_compare,
     "Taxi_v3": taxi_compare,
+    "Taxi_v4": taxi_compare,
     "FrozenLake_v1": frozen_lake_compare
 }

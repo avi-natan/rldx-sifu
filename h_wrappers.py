@@ -128,6 +128,7 @@ wrappers = {
     "CartPole_v1": CartPoleSetStepWrapper,
     "MountainCar_v0": MountainCarSetStepWrapper,
     "Taxi_v3": TaxiSetStepWrapper,
+    "Taxi_v4": TaxiSetStepWrapper,
     "FrozenLake_v1": FrozenLakeSetStepWrapper
 }
 
@@ -145,7 +146,12 @@ FROZENLAKE_SLIPPERY = True
 
 DOMAIN_KWARGS = {
     "FrozenLake_v1": {"is_slippery": FROZENLAKE_SLIPPERY,
-                      "desc": FROZENLAKE_DESC}
+                      "desc": FROZENLAKE_DESC},
+    "Taxi_v4": {
+            "is_rainy": True,
+            "rainy_probability": 0.7,
+            "fickle_passenger": False,
+    }
 }
 
 
