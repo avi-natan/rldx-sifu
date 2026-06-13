@@ -825,7 +825,7 @@ def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fau
         ml_model_name = "PPO"                         # "PPO", "DQN"
         render_mode = "rgb_array"                     # "human", "rgb_array"
         max_exec_len = 200
-        debug_print = False
+        debug_print = True
 
         instance_seed = 10+i
         num_candidate_fault_modes = 10
@@ -989,6 +989,106 @@ def single_experiment_Taxi_SIFU():
 
 """
 
+
+
+def single_experiment_stochastic_FrozenLake():
+
+
+    global HARD_CODED_POLICY
+    loaded = load_pairs_from_json("frozenlake_100_pairs_risk_averse_slippery.json")
+
+    epsilon = 0.03
+    unknown_fault_rate = False
+    fault_rate_candidates = None
+    records = []
+
+    print("Running single_experiment_stochastic_FrozenLake"+ "\n\n")
+    i = 1
+
+
+    map_desc, hardcoded_policy = loaded[i]
+    DOMAIN_KWARGS["FrozenLake_v1"]["desc"] = map_desc
+    DOMAIN_KWARGS["FrozenLake_v1"]["is_slippery"] = True
+    h_rl_models.HARD_CODED_POLICY = hardcoded_policy
+    now = datetime.now()
+    dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+    print(f'==================== {dt_string}: START ========================')
+
+    domain_name = "FrozenLake_v1"
+    ml_model_name = "PPO"                         # "PPO", "DQN"
+    render_mode = "rgb_array"                     # "human", "rgb_array"
+    max_exec_len = 200
+    debug_print = True
+
+    instance_seed = 42
+    num_candidate_fault_modes = 10
+    possible_fault_mode_names = [
+        "[0,0,2,3]",
+        "[0,3,2,3]",
+        "[0,1,0,3]",
+        "[0,1,3,3]",
+        "[0,2,2,3]",
+
+        "[0,3,0,3]",
+        "[0,3,3,3]",
+        "[0,0,0,3]",
+        "[0,0,3,3]",
+        "[0,2,1,3]",
+
+        "[0,0,0,0]",
+        "[1,1,1,1]",
+        "[2,2,2,2]",
+        "[3,3,3,3]"
+        ]
+
+    fault_rate = 0.5
+    percent_visible_states = 100
+
+    execution_fault_mode_name = "[0,0,2,3]"
+    output = run_NON_DETERMINSTIC_single_experiment_PO(
+        domain_name=domain_name,
+        ml_model_name=ml_model_name,
+        render_mode=render_mode,
+        max_exec_len=max_exec_len,
+        debug_print=debug_print,
+        execution_fault_mode_name=execution_fault_mode_name,
+        instance_seed=instance_seed,
+        fault_probability=fault_rate,
+        percent_visible_states=percent_visible_states,
+        possible_fault_mode_names=possible_fault_mode_names,
+        num_candidate_fault_modes=num_candidate_fault_modes,
+        epsilon=epsilon,
+        unknown_fault_rate=unknown_fault_rate,
+        fault_rate_candidates=fault_rate_candidates)
+    if not output:
+        print("output is empty")
+        exit(9)
+
+    output["epsilon"] = epsilon
+    output["real_fault_prob"] = fault_rate
+    output["domain_name"] = domain_name
+    records.append(output)
+
+    dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    print(f'=========================== {dt_string}: END ===========================')
+
+    total_diagnosis_time_sec = output["diagnosis_time_sec"]
+    # timedelta prints 5:42:17 -> 5h, 42 min, 17 sec
+    print(f"Total diagnosis time: "
+          f"{timedelta(seconds=int(total_diagnosis_time_sec))} "
+          f"({total_diagnosis_time_sec:.2f} sec)"
+          )
+
+    file_suffix = str(epsilon).replace(".", "_")
+    method_suffix = "known_fr"
+    file_path = f"frozen_lake_single_exper_{method_suffix}_epsilon_{file_suffix}"
+
+    exper_write_records_to_excel_ind(
+        records,
+        file_path
+    )
+    print(f"file was written at: {file_path}")
+
 def single_experiment_stochastic_Taxi_v4():
 
     epsilon = 0.03
@@ -1007,7 +1107,7 @@ def single_experiment_stochastic_Taxi_v4():
     debug_print = True
     instance_seed = 42
     execution_fault_mode_name = "[0,0,2,3,4,5]"
-    fault_rate = 1.0
+    fault_rate = 0.5
     percent_visible_states = 100
     possible_fault_mode_names = [
         "[0,0,2,3,4,5]",
@@ -1022,6 +1122,8 @@ def single_experiment_stochastic_Taxi_v4():
         "[1,0,2,3,4,5]"
     ]
     num_candidate_fault_modes = 10
+
+
     output = run_NON_DETERMINSTIC_single_experiment_PO(
             domain_name=domain_name,
             ml_model_name=ml_model_name,
@@ -1059,7 +1161,7 @@ def single_experiment_stochastic_Taxi_v4():
 
     file_suffix = str(epsilon).replace(".", "_")
     method_suffix = "known_fr"
-    file_path = f"frozen_lake_non_deterministic_PO_{method_suffix}_epsilon_{file_suffix}"
+    file_path = f"taxi_v4_single_exper_non_deterministic_PO_{method_suffix}_epsilon_{file_suffix}"
 
     exper_write_records_to_excel_ind(
         records,

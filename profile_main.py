@@ -4,8 +4,8 @@ import pstats
 
 
 
-from p_single_experiments import multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO
-
+from p_single_experiments import multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO, \
+    single_experiment_stochastic_FrozenLake, single_experiment_stochastic_Taxi_v4
 
 if __name__ == "__main__":
 
@@ -13,7 +13,8 @@ if __name__ == "__main__":
 
     profiler.enable()
 
-    multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.03)
+    single_experiment_stochastic_FrozenLake()
+    #single_experiment_stochastic_Taxi_v4()
 
     profiler.disable()
 

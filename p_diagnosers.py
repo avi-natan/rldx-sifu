@@ -684,6 +684,8 @@ def fault_identification_non_deterministic_PO(
 
 
     for i in range(1, len(observations)):
+        if debug_print:
+            print(f"DEBUG: iteration {i}")
 
 
         if observations[i] is None:
@@ -694,10 +696,10 @@ def fault_identification_non_deterministic_PO(
         num_of_observed_states+=1
         current_gap_length = i - last_observed_index
 
-        # min_tries = 100 + 10 * current_gap_length
-        # batch_size = 50
-        min_tries = 20
-        batch_size = 10
+        min_tries = 100 + 10 * current_gap_length
+        batch_size = 50
+        # min_tries = 20
+        # batch_size = 10
         scale = max(1.0, (0.025 / epsilon) ** 2)
 
         base_max = int(2500 * scale)

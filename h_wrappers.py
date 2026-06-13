@@ -1,6 +1,6 @@
 import gym
+import gymnasium
 import numpy
-from numpy import cos, sin
 
 class AcrobotSetStepWrapper(gym.Wrapper):
     def __init__(self, env):
@@ -122,13 +122,31 @@ class FrozenLakeSetStepWrapper(gym.Wrapper):
         return raw_state, reward, done, trunc, info
 
 
+class TaxiV4SetStepWrapper(gymnasium.Wrapper):
+    def __init__(self, env):
+        super().__init__(env)
+
+    def reset(self, seed=None, options=None):
+        state, info = self.env.reset(seed=seed, options=options)
+        raw_state = int(self.unwrapped.s)
+        return raw_state, info
+
+    def set_state(self, raw_state):
+        self.unwrapped.s = int(raw_state)
+
+    def step(self, action):
+        state, reward, terminated, truncated, info = self.env.step(action)
+        raw_state = int(self.unwrapped.s)
+        return raw_state, reward, terminated, truncated, info
+
+
 
 wrappers = {
     "Acrobot_v1": AcrobotSetStepWrapper,
     "CartPole_v1": CartPoleSetStepWrapper,
     "MountainCar_v0": MountainCarSetStepWrapper,
     "Taxi_v3": TaxiSetStepWrapper,
-    "Taxi_v4": TaxiSetStepWrapper,
+    "Taxi_v4": TaxiV4SetStepWrapper,
     "FrozenLake_v1": FrozenLakeSetStepWrapper
 }
 
@@ -157,5 +175,14 @@ DOMAIN_KWARGS = {
 
 def make_wrapped_env(domain_name, render_mode):
     kwargs = DOMAIN_KWARGS.get(domain_name, {})
-    base_env = gym.make(domain_name.replace('_', '-'), render_mode=render_mode, **kwargs)
+    used_gym = gym
+    if domain_name == "Taxi_v4":
+        used_gym = gymnasium
+
+    base_env = used_gym.make(
+        domain_name.replace('_', '-'),
+        render_mode=render_mode,
+        **kwargs
+    )
+
     return wrappers[domain_name](base_env)
