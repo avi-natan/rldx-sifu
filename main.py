@@ -100,8 +100,8 @@ if __name__ == '__main__':
         )
         """
 
-        single_experiment_stochastic_FrozenLake()
-        #single_experiment_stochastic_Taxi_v4()
+        #single_experiment_stochastic_FrozenLake()
+        single_experiment_stochastic_Taxi_v4()
 
 
         # single_experiment_FrozenLake_NON_DETERMINSTIC()
