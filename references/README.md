@@ -19,8 +19,9 @@ cluster/HPC docs) into this folder; the text is extracted for reading (see note 
 | `recent_paper_1.pdf` | **"What Went Wrong? Diagnosing Anomalies in RL Policy Executions"** (defines RLDX; algorithms **SIF** + **SIFU**) | **Core / definitely relevant.** Source of `SIF`, `SIFU`, and the `SIFU2…SIFU8` ablation variants in `p_diagnosers.py`. Defines the RLDX problem, fault modes, observation gaps & **conflicts**. **Explicitly assumes deterministic transitions** — the assumption Ahmad relaxes to stochastic. Lists "ranking methods for diagnoses" as future work — which Ahmad's likelihood ranking implements. |
 | `recent_paper_2.pdf` | **"Diagnosing Non-Intermittent Anomalies in RL Policy Executions"** — Natan, Stern, Kalech (DX 2024) | **Relevant (earlier work).** The previous student's published paper; `W`/`SN` baseline diagnosers and the non-intermittent→intermittent fault framing. Already cited in `README.md`/`CLAUDE.md`. |
 
-## Cluster / HPC docs (later)
+## Cluster / HPC docs
 
 | File | Topic | Notes |
 |------|-------|-------|
-| _(none yet)_ | | |
+| `cluster_user_guide.pdf` | BGU CIS HPC (Slurm) 2024 user guide | Official guide: SSH login, sbatch, job arrays, scratch SSD, conda, IDEs, FAQ. |
+| `CLUSTER.md` | **Project-tailored cluster conclusions** | Distilled, rldx-specific: terminal SSH to `slurm.bgu.ac.il`, CPU jobs, **job arrays** for experiment sweeps, `/scratch` for I/O, monitoring, and "cluster-ready" TODOs. |

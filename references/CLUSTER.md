@@ -1,0 +1,125 @@
+# Cluster usage — conclusions for rldx-sifu
+
+Distilled from `references/cluster_user_guide.pdf` (BGU CIS HPC / Slurm, 2024), tailored to
+this project. Italic = Slurm CLI. This is the **manager node = launch only, compute nodes =
+run** model: you SSH to the login node and submit jobs that Slurm schedules onto compute nodes.
+
+## 0. Connecting (replacing MobaXterm with terminal SSH)
+- **Prereq network:** be on **BGU campus / BGU-WIFI**, OR any network **+ BGU VPN**. (FAQ: "Can I
+  ssh when away? — use VPN.")
+- **Login node:** `slurm.bgu.ac.il`, port 22, **BGU username + password**.
+- **Terminal SSH** (Windows PowerShell/Git-Bash both have OpenSSH):
+  ```bash
+  ssh <bgu_username>@slurm.bgu.ac.il
+  ```
+- Optional convenience — add to `~/.ssh/config` so you can just `ssh bgu`:
+  ```
+  Host bgu
+      HostName slurm.bgu.ac.il
+      User <bgu_username>
+  ```
+- **NEVER compute on the manager node.** It's only for submitting/monitoring.
+- Admission to the cluster must be granted by IT first.
+
+## 1. This project is CPU-bound — skip the GPU
+The diagnosers (SIF/SIFU and the stochastic Monte-Carlo identifiers) and experiment drivers are
+**CPU work**. Submit to the **CPU cluster** (no `--gpus`). GPU is only relevant if you retrain a
+policy (`train_taxi_v4_ppo.py` PPO) — even then PPO on these toy envs is small. Default: **no GPU**.
+
+## 2. First-time setup (conda env on the manager node)
+Anaconda is preinstalled (do **not** install it). Create the project env once on the login node:
+```bash
+module load anaconda
+conda create -n rldx python=3.11
+conda activate rldx
+pip install -r requirements.txt
+conda deactivate
+```
+All nodes share your `/home` + `/storage`, so files uploaded to the login node are visible on
+compute nodes.
+
+## 3. Submitting a job (sbatch) — template for this repo
+Copy the cluster's `/storage/example.sbatch` as a base, or use this CPU template:
+```bash
+#!/bin/bash
+#SBATCH --partition main                 ### use 'main' (no QoS)
+#SBATCH --time 0-08:00:00                ### D-H:MM:SS, < 7 day partition cap
+#SBATCH --job-name rldx
+#SBATCH --output rldx-%J.out             ### %J = job id
+#SBATCH --mail-user=<you>@post.bgu.ac.il
+#SBATCH --mail-type=END,FAIL
+#SBATCH --cpus-per-task=6                ### CPU job: ok to request a few cores
+
+echo "JOBID=$SLURM_JOBID NODE=$SLURM_JOB_NODELIST"
+module load anaconda
+source activate rldx
+python -u main.py                        ### -u = unbuffered, see logs live
+```
+Submit with the env **deactivated** in your shell: `sbatch rldx.sbatch`.
+
+## 4. Job arrays — the right tool for your experiment sweeps
+You run many near-identical experiments (epsilon sweeps, fault rates, seeds, the 100 FrozenLake
+maps). **Do NOT fire thousands of tiny `sbatch` calls** (scheduler + I/O "silent killer"). Use a
+**job array** instead — one queue entry, parallel tasks distinguished by `$SLURM_ARRAY_TASK_ID`:
+```bash
+#SBATCH --array=0-48%10      ### 49 tasks (e.g. one per map), max 10 running at once
+...
+python -u main.py $SLURM_ARRAY_TASK_ID
+#SBATCH --output rldx-%A_%a.out   ### %A = array job id, %a = task id
+```
+Then in Python: `task = int(os.getenv("SLURM_ARRAY_TASK_ID", 0))` to pick the map/epsilon/seed.
+> Practical fit: `main.py` currently selects experiments by commenting/uncommenting and
+> hard-codes params (`main.py:90-92`, single map `loaded[1]`). To use arrays well we'd wire
+> `SLURM_ARRAY_TASK_ID` → an experiment/param index. Good first "cluster-ready" refactor.
+
+## 5. I/O: write results to local SSD, copy back at the end
+Your experiments write Excel/CSV. Many tasks writing to shared storage at once can hang the
+metadata server. Best practice: write to the compute node's **`/scratch`**, copy final results
+back to `/storage` (or `/home`) at the end:
+```bash
+#SBATCH --tmp=10G
+export SLURM_SCRATCH_DIR=/scratch/${SLURM_JOB_USER}/${SLURM_JOB_ID}
+# ... run code writing into $SLURM_SCRATCH_DIR ...
+cp -r $SLURM_SCRATCH_DIR/results $SLURM_SUBMIT_DIR/
+```
+**`/scratch` is wiped when the job ends** — always copy back.
+
+## 6. Monitoring & control
+- *squeue --me* — my jobs (`ST`: `PD` pending, `R` running)
+- *less rldx-<jobid>.out* — watch output
+- *scancel <jobid>* / *scancel --name rldx* — cancel; *scancel -t PENDING -u <user>* — all pending
+- *sacct -j <jobid> --format=JobName,MaxRSS,AllocTRES,State,Elapsed,ExitCode* — post-mortem (RAM etc.)
+- *sinfo -Nel* — node info; *sres* — current resource availability
+- Pending `REASON`: `Resources` (cluster full), `Priority` (queued behind others),
+  `QOSMaxJobsPerUserLimit` (too many concurrent jobs), `PartitionTimeLimit` (time > 7 days).
+
+## 7. Interactive use (for debugging on a compute node)
+```bash
+sinteractive --time 0-2:00:00        ### CPU interactive job (no --gpu for us)
+# wait for allocation, note the hostname + jobid, then:
+srun --jobid=<jobid> --pty bash      ### attach to the job's env
+# ... debug: conda activate rldx; python main.py ...
+scancel <jobid>                      ### ALWAYS release when done
+```
+Keep the SSH session open for the duration; closing it ends interactive work. Useful for IDEs:
+the guide covers **PyCharm Pro** and **VS Code (Remote-SSH)** pointed at
+`~/.conda/envs/rldx/bin/python` on the **compute** node (never the manager node).
+
+## 8. Moving code/results to & from the cluster
+- **Git** (recommended for this repo): git is on the manager node. Set up a GitHub SSH key
+  (`ssh-keygen -t ed25519`; add `~/.ssh/id_ed25519.pub` to GitHub), then clone/pull `rldx-sifu`
+  there. Our branch `new-master-ai` is already pushed, so `git clone` + `git checkout new-master-ai`.
+- **Files:** WinSCP (GUI) or `scp`/`rsync` from the terminal, e.g.
+  `scp -r results <user>@slurm.bgu.ac.il:/home/<user>/rldx-sifu/`.
+
+## 9. Etiquette / limits (shared resource)
+- Use **minimum** RAM (default 24G/GPU; override `--mem=48G` only if needed; >58G → ask IT).
+- Release idle resources (*scancel*) even on breaks; delete unused files.
+- Don't allocate more than you need; one GPU per job max (N/A for us).
+
+## 10. Project-specific TODOs to become "cluster-ready"
+1. **Parametrize `main.py`** by an index/args so a **job array** can sweep maps/epsilons/seeds
+   (replace the comment-toggling + `main.py:90-92` hard-overrides; make the parsed CLI flags live).
+2. **Route experiment outputs** to `$SLURM_SCRATCH_DIR` then copy back (avoid shared-FS thrash).
+3. Recreate the **`rldx` conda env (py3.11)** from `requirements.txt` on the cluster.
+4. Pull `new-master-ai` on the cluster via Git SSH.
