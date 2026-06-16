@@ -8,3 +8,4 @@ logs/
 *.log
 *.xlsx
 *.png
+.claude/settings.local.json
