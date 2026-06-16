@@ -27,23 +27,24 @@ Much is already set up — this is **not** a blank slate:
 - `~/example.sbatch` (the cluster's template) is also present.
 
 **Immediate gaps:** (1) cluster repo is behind `new-master-ai`; (2) `~/rldx.sbatch` activates the
-old py3.8 `rldx_conda` — switch to `rldx_py311`; (3) `main.py` doesn't yet read
-`SLURM_ARRAY_TASK_ID`, so the array scaffolding is inert until `main.py` is parametrized (ties to
-the `main.py:90-92` inert-CLI gotcha).
+old py3.8 `rldx_conda` — switch to `rldx_py311`; (3) ensure `main.py`'s CLI flags take effect
+(remove the recent `main.py:90` epsilon override) — the array→param mapping itself already lives in
+`rldx.sbatch` (`EPSILONS[$SLURM_ARRAY_TASK_ID]`) and has been used.
 
 ## How Ahmad actually runs this project (from `~/.bash_history`)
 - **Sync repo:** `cd ~/rldx_repo/rldx-sifu && git reset --hard && git fetch && git pull`.
 - **One shared `~/rldx.sbatch`, edited in place** with `nano` to fit each run (NOT a separate
   sbatch per experiment). Same habit for `train_pong.sbatch`. So the sbatch on the cluster reflects
   the *last* run's config — don't assume it's a clean template.
-- **Epsilon "sweep" = manual repeated submits:** `sbatch rldx.sbatch --epsilon 0.04` … `1.0`
-  (values seen: 0.04, 0.05, 0.075, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1.0).
+- **Run styles seen (all on the one `rldx.sbatch`):**
+  - Epsilon sweep via repeated submits: `sbatch rldx.sbatch --epsilon X` (X from 0.01 → 1.0, ~18 values).
+  - **Job arrays:** `sbatch --array=0-6 rldx.sbatch` (also 0-0,0-1,0-2,0-4,0-5,5-5,6-6) — the array
+    path WAS used; the array→param mapping lives in `rldx.sbatch` (`EPSILONS[$SLURM_ARRAY_TASK_ID]`),
+    which was uncommented/active at times.
+  - Map-count / unknown-rate: `sbatch rldx.sbatch -n {5,20,30,40}` and `-ufr`.
 - **Monitor:** `squeue --me`, `tail`/`cat` the `rldx_job-<id>.out`. **Cancel:** `scancel <id>`.
-- ⚠️ **Past epsilon sweeps were probably inert:** `--epsilon X` → `python main.py "$@"`, but
-  `main.py:90` overwrites `args.epsilon = 0.03` and the active `single_experiment_stochastic_*`
-  hardcode epsilon internally → those runs likely all used a fixed epsilon, not the swept value.
-  **Verify old `.out` files before trusting epsilon comparisons.** Strongest motivation to make
-  `main.py` truly arg-driven (and job-array ready).
+- Note: the `main.py:90` epsilon override is **recent** (per Ahmad, to be removed) — earlier sweeps
+  predate it, so past epsilon results are fine.
 
 ## 0. Connecting (replacing MobaXterm with terminal SSH)
 - **Prereq network:** be on **BGU campus / BGU-WIFI**, OR any network **+ BGU VPN**. (FAQ: "Can I
