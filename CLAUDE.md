@@ -127,6 +127,9 @@ Key durable facts (full detail, line refs, and issue table live in **`CODE_SCAN.
 
 - BGU CIS Slurm cluster. Connect via terminal SSH: `ssh <bgu_username>@slurm.bgu.ac.il`
   (on BGU-WIFI/campus, or VPN otherwise). Manager node = submit only; compute nodes run jobs.
+  Passwordless key auth is configured as `ssh bgu`.
+- **⚠️ HANDS-OFF:** never touch `~/EOM/` or **any GPU job** (not ours) — only act on our
+  CPU/`main`-partition rldx jobs. See [[cluster-hands-off-boundaries]] and `references/CLUSTER.md`.
 - **This project is CPU-bound** (diagnosers + Monte-Carlo) — submit CPU jobs, no GPU.
 - Use **job arrays** for experiment sweeps (epsilons/fault-rates/seeds/maps), not thousands of
   tiny jobs; write results to `/scratch` and copy back. Full tailored guide + sbatch template:

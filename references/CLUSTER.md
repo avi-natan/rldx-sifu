@@ -4,6 +4,12 @@ Distilled from `references/cluster_user_guide.pdf` (BGU CIS HPC / Slurm, 2024), 
 this project. Italic = Slurm CLI. This is the **manager node = launch only, compute nodes =
 run** model: you SSH to the login node and submit jobs that Slurm schedules onto compute nodes.
 
+## ⚠️ Hands-off boundaries (NEVER touch)
+- **`~/EOM/` directory** — never read, write, move, or delete anything inside it.
+- **Any GPU job** (partition `gpu`, e.g. jobs named `my_job`) — **not ours.** Expect them to be
+  there; never `scancel`/modify them. Only ever act on our **CPU / `main`-partition** rldx jobs
+  (`rldx_job`) under `~/rldx_repo/rldx-sifu`. When canceling, target specific job ids — never blanket-cancel.
+
 ## Current cluster state (observed 2026-06-17, via key-based `ssh bgu`)
 Much is already set up — this is **not** a blank slate:
 - **Login:** `ahmade@slurm.bgu.ac.il` (lands on `slurm-login-02`), home `/home/ahmade`.
