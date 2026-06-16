@@ -74,6 +74,22 @@ Weight these heavily; treat `master`-only code as background.
 - `README.md` is the **previous student's** (Python 3.8.7, his paper) — do not assume it
   describes Ahmad's current setup; don't rewrite it unless asked.
 
+## Code scan findings (2026-06-16) — see `CODE_SCAN.md` for the full conclusion
+
+Key durable facts (full detail, line refs, and issue table live in **`CODE_SCAN.md`** at repo root):
+- **Two diagnoser families** in `p_diagnosers.py`: legacy *deterministic* (`W, SN, SIF, SIFU…SIFU8`,
+  exact/symbolic) vs Ahmad's *stochastic* (`fault_identification_non_deterministic_FO / PO /
+  PO_unknown_fault_rate`, adaptive Monte-Carlo, likelihood ranking). Work on the stochastic ones.
+- The stochastic diagnosers **do** pass env stochastic kwargs (slippery/rainy) via `make_wrapped_env`;
+  only the legacy `SIFU*/W/SN` build bare envs (latent trap if reused on stochastic domains).
+- **Taxi-v4 gotcha (likely why it's "untested"):** the loader uses
+  `environments/Taxi_v4/models/PPO/Taxi_v4__PPO.zip` (old), but the freshly-trained
+  `Taxi_v4_PPO_rainy_0.7_steps_1000000_seed_42` has **no `.zip`** and is never loaded.
+- **`main.py:90-92` gotcha:** parses `--epsilon/-ufr/-n` then hard-overwrites them, so the CLI flags
+  are currently inert; experiment selection is by commenting/uncommenting calls.
+- Stochastic drivers currently hardcode a single map (`loaded[1]`), `fault_rate=0.5`, `epsilon=0.03`,
+  Taxi `rainy_probability=0.7`.
+
 ## Working rules for Claude
 
 - **Branch:** work on `new-master-ai`; never modify `master`.
