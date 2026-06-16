@@ -99,6 +99,11 @@ Key durable facts (full detail, line refs, and issue table live in **`CODE_SCAN.
 - **Persistence:** when a code decision/finding seems worth persisting, **ask Ahmad** before
   writing it into this file.
 - **References:** papers and cluster docs go in `references/` — read them on request.
+- **Proactive Claude Code guidance:** Ahmad is new to Claude Code and will miss setup/usage
+  opportunities. Whenever something would help — running `/init`, a project `.claude/` folder,
+  a new skill, a permission rule, a useful slash command, a keyboard shortcut, or any essential
+  usage tip — **proactively point it out**, briefly explain what it does, and let him decide.
+  Don't assume he already knows.
 
 ## Parked / out of scope (for now)
 
