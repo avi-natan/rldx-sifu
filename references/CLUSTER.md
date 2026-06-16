@@ -16,17 +16,20 @@ Much is already set up — this is **not** a blank slate:
   **Passwordless key auth is configured** (alias `bgu` in `~/.ssh/config` → key `~/.ssh/id_ed25519`).
 - **Repo cloned:** `~/rldx_repo/rldx-sifu`, currently on branch **`new-master` @ `a1cbad7`** —
   **behind** Ahmad's local `new-master-ai`. To run the latest: `git fetch` + `git checkout new-master-ai`.
-- **Conda envs exist:** `rldx_conda` and `rldx_py311` (plus `eom+`). The existing sbatch uses
-  **`rldx_conda`** — confirm which is the canonical/working env before big runs.
+- **Conda env — use `rldx_py311`** (Python 3.11, canonical for current work). `rldx_conda` is the
+  OLD py3.8 env (previous student's setup); `eom+` is EOM work (not ours). ⚠️ The existing
+  `~/rldx.sbatch` still does `source activate rldx_conda` (py3.8) and **must be switched to
+  `rldx_py311`**. Note: the py3.8→3.11 migration may be imperfect — watch for dependency errors.
 - **Existing `~/rldx.sbatch`:** `--partition main`, `--time 2-00:00:00`, `--gpus=0`,
   `module load anaconda; source activate rldx_conda; cd ~/rldx_repo/rldx-sifu; python main.py "$@"`.
   Already contains **commented job-array scaffolding** for an epsilon sweep
   (`EPSILONS=(0.1 0.2 0.5 0.75 1); EPS=${EPSILONS[$SLURM_ARRAY_TASK_ID]}`).
 - `~/example.sbatch` (the cluster's template) is also present.
 
-**Immediate gaps:** (1) cluster repo is behind `new-master-ai`; (2) two rldx envs — pick one;
-(3) `main.py` doesn't yet read `SLURM_ARRAY_TASK_ID`, so the array scaffolding is inert until
-`main.py` is parametrized (ties to the `main.py:90-92` inert-CLI gotcha).
+**Immediate gaps:** (1) cluster repo is behind `new-master-ai`; (2) `~/rldx.sbatch` activates the
+old py3.8 `rldx_conda` — switch to `rldx_py311`; (3) `main.py` doesn't yet read
+`SLURM_ARRAY_TASK_ID`, so the array scaffolding is inert until `main.py` is parametrized (ties to
+the `main.py:90-92` inert-CLI gotcha).
 
 ## 0. Connecting (replacing MobaXterm with terminal SSH)
 - **Prereq network:** be on **BGU campus / BGU-WIFI**, OR any network **+ BGU VPN**. (FAQ: "Can I

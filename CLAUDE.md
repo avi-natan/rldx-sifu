@@ -87,8 +87,13 @@ Weight these heavily; treat `master`-only code as background.
 - CLI flags: `--epsilon` (adaptive MC confidence threshold), `-ufr/--unknown_fault_rate`,
   `-n/--maps_num`. Note: `main.py` currently also hard-sets these after parsing.
 - Experiment input files live in `experimental inputs/` (e.g. `e5000_Taxi-1.json`).
-- **Environment:** Python **3.11** (`requirements.txt`). `requirements_py38_backup.txt` keeps
-  the previous student's Python 3.8 setup.
+- **Environment — ALWAYS Python 3.11:**
+  - Local: use **`.venv_domains`** + `requirements.txt` (py3.11). The old `.venv` +
+    `requirements_py38_backup.txt` is the previous student's py3.8 setup — do not use.
+  - Cluster: use conda env **`rldx_py311`**. `rldx_conda` is the old py3.8 env. ⚠️ The existing
+    `~/rldx.sbatch` still activates `rldx_conda` and must be switched to `rldx_py311`.
+  - ⚠️ The py3.8→3.11 migration (done to enable Taxi-v4 / FrozenLake) **may be imperfect** —
+    watch for lingering dependency conflicts / errors. See [[env-python311-and-migration-caveat]].
 - `README.md` is the **previous student's** (Python 3.8.7, his paper) — do not assume it
   describes Ahmad's current setup; don't rewrite it unless asked.
 
