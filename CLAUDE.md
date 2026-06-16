@@ -93,8 +93,9 @@ Key durable facts (full detail, line refs, and issue table live in **`CODE_SCAN.
 ## Working rules for Claude
 
 - **Branch:** work on `new-master-ai`; never modify `master`.
-- **Commits:** make frequent **local checkpoint commits** at logical stopping points with
-  clear messages so changes are revertible. **Do not push to `origin`** unless Ahmad asks.
+- **Commits:** make frequent checkpoint commits at logical stopping points with clear
+  messages so changes are revertible. **Pushing to `origin/new-master-ai` is OK** (Ahmad
+  authorized it); **never push to `master` or `new-master`.**
 - **Persistence:** when a code decision/finding seems worth persisting, **ask Ahmad** before
   writing it into this file.
 - **References:** papers and cluster docs go in `references/` — read them on request.
