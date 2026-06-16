@@ -4,6 +4,24 @@ Distilled from `references/cluster_user_guide.pdf` (BGU CIS HPC / Slurm, 2024), 
 this project. Italic = Slurm CLI. This is the **manager node = launch only, compute nodes =
 run** model: you SSH to the login node and submit jobs that Slurm schedules onto compute nodes.
 
+## Current cluster state (observed 2026-06-17, via key-based `ssh bgu`)
+Much is already set up — this is **not** a blank slate:
+- **Login:** `ahmade@slurm.bgu.ac.il` (lands on `slurm-login-02`), home `/home/ahmade`.
+  **Passwordless key auth is configured** (alias `bgu` in `~/.ssh/config` → key `~/.ssh/id_ed25519`).
+- **Repo cloned:** `~/rldx_repo/rldx-sifu`, currently on branch **`new-master` @ `a1cbad7`** —
+  **behind** Ahmad's local `new-master-ai`. To run the latest: `git fetch` + `git checkout new-master-ai`.
+- **Conda envs exist:** `rldx_conda` and `rldx_py311` (plus `eom+`). The existing sbatch uses
+  **`rldx_conda`** — confirm which is the canonical/working env before big runs.
+- **Existing `~/rldx.sbatch`:** `--partition main`, `--time 2-00:00:00`, `--gpus=0`,
+  `module load anaconda; source activate rldx_conda; cd ~/rldx_repo/rldx-sifu; python main.py "$@"`.
+  Already contains **commented job-array scaffolding** for an epsilon sweep
+  (`EPSILONS=(0.1 0.2 0.5 0.75 1); EPS=${EPSILONS[$SLURM_ARRAY_TASK_ID]}`).
+- `~/example.sbatch` (the cluster's template) is also present.
+
+**Immediate gaps:** (1) cluster repo is behind `new-master-ai`; (2) two rldx envs — pick one;
+(3) `main.py` doesn't yet read `SLURM_ARRAY_TASK_ID`, so the array scaffolding is inert until
+`main.py` is parametrized (ties to the `main.py:90-92` inert-CLI gotcha).
+
 ## 0. Connecting (replacing MobaXterm with terminal SSH)
 - **Prereq network:** be on **BGU campus / BGU-WIFI**, OR any network **+ BGU VPN**. (FAQ: "Can I
   ssh when away? — use VPN.")
