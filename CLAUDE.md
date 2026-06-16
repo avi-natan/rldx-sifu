@@ -123,6 +123,13 @@ Key durable facts (full detail, line refs, and issue table live in **`CODE_SCAN.
   usage tip — **proactively point it out**, briefly explain what it does, and let him decide.
   Don't assume he already knows.
 
-## Parked / out of scope (for now)
+## Cluster / HPC (in scope)
 
-- Cluster / HPC setup & usage — later (docs will go in `references/`).
+- BGU CIS Slurm cluster. Connect via terminal SSH: `ssh <bgu_username>@slurm.bgu.ac.il`
+  (on BGU-WIFI/campus, or VPN otherwise). Manager node = submit only; compute nodes run jobs.
+- **This project is CPU-bound** (diagnosers + Monte-Carlo) — submit CPU jobs, no GPU.
+- Use **job arrays** for experiment sweeps (epsilons/fault-rates/seeds/maps), not thousands of
+  tiny jobs; write results to `/scratch` and copy back. Full tailored guide + sbatch template:
+  **`references/CLUSTER.md`** (source: `references/cluster_user_guide.pdf`).
+- "Cluster-ready" enabler: parametrize `main.py` by `SLURM_ARRAY_TASK_ID` (ties to the
+  `main.py:90-92` inert-CLI gotcha and the hardcoded single map).
