@@ -31,6 +31,20 @@ old py3.8 `rldx_conda` — switch to `rldx_py311`; (3) `main.py` doesn't yet rea
 `SLURM_ARRAY_TASK_ID`, so the array scaffolding is inert until `main.py` is parametrized (ties to
 the `main.py:90-92` inert-CLI gotcha).
 
+## How Ahmad actually runs this project (from `~/.bash_history`)
+- **Sync repo:** `cd ~/rldx_repo/rldx-sifu && git reset --hard && git fetch && git pull`.
+- **One shared `~/rldx.sbatch`, edited in place** with `nano` to fit each run (NOT a separate
+  sbatch per experiment). Same habit for `train_pong.sbatch`. So the sbatch on the cluster reflects
+  the *last* run's config — don't assume it's a clean template.
+- **Epsilon "sweep" = manual repeated submits:** `sbatch rldx.sbatch --epsilon 0.04` … `1.0`
+  (values seen: 0.04, 0.05, 0.075, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1.0).
+- **Monitor:** `squeue --me`, `tail`/`cat` the `rldx_job-<id>.out`. **Cancel:** `scancel <id>`.
+- ⚠️ **Past epsilon sweeps were probably inert:** `--epsilon X` → `python main.py "$@"`, but
+  `main.py:90` overwrites `args.epsilon = 0.03` and the active `single_experiment_stochastic_*`
+  hardcode epsilon internally → those runs likely all used a fixed epsilon, not the swept value.
+  **Verify old `.out` files before trusting epsilon comparisons.** Strongest motivation to make
+  `main.py` truly arg-driven (and job-array ready).
+
 ## 0. Connecting (replacing MobaXterm with terminal SSH)
 - **Prereq network:** be on **BGU campus / BGU-WIFI**, OR any network **+ BGU VPN**. (FAQ: "Can I
   ssh when away? — use VPN.")
