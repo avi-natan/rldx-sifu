@@ -9,3 +9,4 @@ logs/
 *.xlsx
 *.png
 .claude/settings.local.json
+references/*.txt

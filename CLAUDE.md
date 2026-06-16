@@ -29,6 +29,24 @@ infer the **true fault** that produced the trajectory.
   **known fault rate**. A **unknown-fault-rate** variant of the algorithm was recently added
   but not yet fully adopted.
 
+## Papers & theory mapping (in `references/`)
+
+Two foundational papers (see `references/README.md`):
+- **`recent_paper_1.pdf` — "What Went Wrong? Diagnosing Anomalies in RL Policy Executions."**
+  Defines the **RLDX** problem and the algorithms **SIF** (breadth-first hypothesis tracking)
+  and **SIFU** (conflict-directed: observation *gaps* → *conflicts*, gap **S**orting, fault-mode
+  **F**iltering). The `SIFU2…SIFU8` in code are its **ablation variants** (combinations of
+  C/S/F). **Crucially, this paper assumes a *deterministic* transition function.**
+- **`recent_paper_2.pdf` — "Diagnosing Non-Intermittent Anomalies in RL Policy Executions"**
+  (Natan, Stern, Kalech, DX 2024). Previous student's published work; the `W`/`SN` baseline
+  diagnosers and the non-intermittent→intermittent framing.
+
+**Where Ahmad's work sits:** he **relaxes paper 1's deterministic-transition assumption** to
+**stochastic transitions**, which is why exact symbolic filtering (SIF/SIFU) gives way to his
+**Monte-Carlo + likelihood-ranking** diagnosers (`fault_identification_non_deterministic_*`).
+Paper 1's listed future work — *ranking methods for diagnoses* and *hidden/unknown fault modes* —
+maps directly onto his likelihood ranking and unknown-fault-rate variant.
+
 ## Environments
 
 - **FrozenLake** (stochastic) — working.
