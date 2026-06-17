@@ -107,6 +107,44 @@ class FrozenLakeHardcodedPolicy:
         return action, None
 
 
+class TaxiHardcodedPolicy:
+    """Deterministic policy as a {state: action} lookup table.
+
+    Taxi has only Discrete(500) states, so we precompute the trained model's
+    deterministic action for every state once and then serve diagnosis from a
+    dict lookup instead of a neural-net forward pass on every simulated step.
+    Behaviour is identical to model.predict(obs, deterministic=True).
+    """
+    def __init__(self, policy_dict):
+        self.policy_dict = policy_dict
+
+    def predict(self, obs, deterministic=True):
+        if isinstance(obs, np.ndarray):
+            s = int(obs.item())
+        else:
+            s = int(obs)
+        return self.policy_dict[s], None
+
+
+# cache the precomputed table per model path so we build it once per process
+_TAXI_POLICY_CACHE = {}
+
+def build_taxi_hardcoded_policy(model_path, ml_model_name):
+    """Load the trained model once and tabulate its deterministic action for
+    every Taxi state, returning a TaxiHardcodedPolicy. Cached by model_path."""
+    if model_path in _TAXI_POLICY_CACHE:
+        return _TAXI_POLICY_CACHE[model_path]
+
+    model = models[ml_model_name].load(model_path)
+    n_states = model.observation_space.n
+    table = {s: int(model.predict(s, deterministic=True)[0]) for s in range(n_states)}
+
+    policy = TaxiHardcodedPolicy(table)
+    _TAXI_POLICY_CACHE[model_path] = policy
+    print(f"[TaxiHardcodedPolicy] tabulated {n_states} states from {model_path}")
+    return policy
+
+
 def load_trained_model(domain_name, ml_model_name, env=None):
 
     # should be deleted after i have a good policy
@@ -116,6 +154,12 @@ def load_trained_model(domain_name, ml_model_name, env=None):
 
     models_dir = f"environments/{domain_name}/models/{ml_model_name}"
     model_path = f"{models_dir}/{domain_name}__{ml_model_name}.zip"
+
+    # Taxi: serve the deterministic policy from a precomputed 500-state table
+    # (huge speedup for Monte-Carlo, which calls the policy on every step).
+    if domain_name == "Taxi_v4":
+        return build_taxi_hardcoded_policy(model_path, ml_model_name)
+
     if env is None:
         return models[ml_model_name].load(model_path)
     else:
