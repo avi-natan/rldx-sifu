@@ -10,3 +10,4 @@ logs/
 *.png
 .claude/settings.local.json
 references/*.txt
+references/Ahmad Essa - Research Notes.pdf
