@@ -1106,20 +1106,32 @@ def single_experiment_stochastic_Taxi_v4():
     max_exec_len = 200
     debug_print = True
     instance_seed = 42
+    # Taxi action ids (fixed by Gymnasium). On the grid:
+    #   0 = South  -> move DOWN
+    #   1 = North  -> move UP
+    #   2 = East   -> move RIGHT
+    #   3 = West   -> move LEFT
+    #   4 = Pickup passenger
+    #   5 = Dropoff passenger
+    #
+    # A fault mode is a 6-length action map: position = action the policy COMMANDS,
+    # value = action that actually EXECUTES. The healthy (no-fault) map is [0,1,2,3,4,5].
+    # Values may repeat (an action can collapse onto another), so it need not be a permutation.
+    # Example: "[0,0,2,3,4,5]" -> position 1 holds 0, so a commanded 1 (UP) executes as 0 (DOWN).
     execution_fault_mode_name = "[0,0,2,3,4,5]"
     fault_rate = 0.5
     percent_visible_states = 100
     possible_fault_mode_names = [
-        "[0,0,2,3,4,5]",
-        "[0,1,0,3,4,5]",
-        "[0,1,2,0,4,5]",
-        "[0,1,2,3,0,5]",
-        "[0,1,2,3,4,0]",
-        "[0,2,1,3,4,5]",
-        "[0,3,2,1,4,5]",
-        "[0,4,2,3,1,5]",
-        "[0,5,2,3,4,1]",
-        "[1,0,2,3,4,5]"
+        "[0,0,2,3,4,5]",   # UP    -> DOWN
+        "[0,1,0,3,4,5]",   # RIGHT -> DOWN
+        "[0,1,2,0,4,5]",   # LEFT  -> DOWN
+        "[0,1,2,3,0,5]",   # Pickup  -> DOWN
+        "[0,1,2,3,4,0]",   # Dropoff -> DOWN
+        "[0,2,1,3,4,5]",   # swap UP<->RIGHT
+        "[0,3,2,1,4,5]",   # swap UP<->LEFT
+        "[0,4,2,3,1,5]",   # swap UP<->Pickup
+        "[0,5,2,3,4,1]",   # swap UP<->Dropoff
+        "[1,0,2,3,4,5]"    # swap DOWN<->UP
     ]
     num_candidate_fault_modes = 10
 
