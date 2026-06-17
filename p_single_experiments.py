@@ -1182,6 +1182,122 @@ def single_experiment_stochastic_Taxi_v4():
     print(f"file was written at: {file_path}")
 
 
+def multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_rate=False, num_seeds=5):
+    """Taxi-v4 sweep, mirroring multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO.
+
+    Taxi has ONE fixed map and ONE policy, so the variation source is the SEED:
+    each seed yields a different start (taxi cell, passenger, destination) -> a
+    different trajectory. For each seed we sweep fault_rate x visibility, with one
+    random execution fault per seed. Trajectory creation can fail under a fault
+    (taxi never completes) -> we skip and count those.
+    """
+    records = []
+    skipped = 0
+
+    if unknown_fault_rate:
+        fault_rate_candidates = [0.1, 0.3, 0.5, 0.7, 0.8]
+    else:
+        fault_rate_candidates = None
+
+    domain_name = "Taxi_v4"
+    ml_model_name = "PPO"
+    render_mode = "rgb_array"
+    max_exec_len = 200
+    debug_print = False
+    num_candidate_fault_modes = 10
+
+    # Taxi action ids: 0=South/DOWN, 1=North/UP, 2=East/RIGHT, 3=West/LEFT, 4=Pickup, 5=Dropoff.
+    # A fault map is position=commanded, value=executed; healthy=[0,1,2,3,4,5].
+    possible_fault_mode_names = [
+        "[0,0,2,3,4,5]",
+        "[0,1,0,3,4,5]",
+        "[0,1,2,0,4,5]",
+        "[0,1,2,3,0,5]",
+        "[0,1,2,3,4,0]",
+        "[0,2,1,3,4,5]",
+        "[0,3,2,1,4,5]",
+        "[0,4,2,3,1,5]",
+        "[0,5,2,3,4,1]",
+        "[1,0,2,3,4,5]"
+    ]
+
+    fault_rate_list = [0.5, 0.8]
+    percent_visible_states_list = [20, 40, 60, 80, 100]
+
+    msg = (
+        f"Running Taxi-v4 PO diagnosis | epsilon={epsilon} | "
+        f"unknown_fault_rate={unknown_fault_rate} | num_seeds={num_seeds}"
+    )
+    if fault_rate_candidates is not None:
+        msg += f" | fault_rate_candidates={fault_rate_candidates}"
+    print(msg + "\n\n")
+
+    for i in range(num_seeds):
+        instance_seed = 42 + i
+        rng = random.Random(instance_seed)
+        execution_fault_mode_name = rng.choice(possible_fault_mode_names)
+
+        now = datetime.now()
+        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+        print(f'================= {dt_string}: SEED {instance_seed} ({i+1}/{num_seeds}), '
+              f'fault={execution_fault_mode_name} START =================')
+
+        for percent_visible_states in percent_visible_states_list:
+            for fault_rate in fault_rate_list:
+                print(f'===== SEED {instance_seed} | FR={fault_rate} | VR={percent_visible_states} =====')
+
+                output = run_NON_DETERMINSTIC_single_experiment_PO(
+                    domain_name=domain_name,
+                    ml_model_name=ml_model_name,
+                    render_mode=render_mode,
+                    max_exec_len=max_exec_len,
+                    debug_print=debug_print,
+                    execution_fault_mode_name=execution_fault_mode_name,
+                    instance_seed=instance_seed,
+                    fault_probability=fault_rate,
+                    percent_visible_states=percent_visible_states,
+                    possible_fault_mode_names=possible_fault_mode_names,
+                    num_candidate_fault_modes=num_candidate_fault_modes,
+                    epsilon=epsilon,
+                    unknown_fault_rate=unknown_fault_rate,
+                    fault_rate_candidates=fault_rate_candidates)
+
+                if not output:
+                    skipped += 1
+                    continue
+
+                output["epsilon"] = epsilon
+                output["experiment_num"] = i + 1
+                output["real_fault_prob"] = fault_rate
+                output["map_desc"] = f"seed_{instance_seed}"
+                output["hardcoded_policy"] = f"{domain_name}_{ml_model_name}"
+                output["domain_name"] = domain_name
+
+                records.append(output)
+
+        dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        print(f'================= {dt_string}: SEED {instance_seed} END =================')
+
+    if not records:
+        print("No successful Taxi experiments produced (all trajectories failed).")
+        return
+
+    total_diagnosis_time_sec = sum(r["diagnosis_time_sec"] for r in records)
+    avg_diagnosis_time_sec = total_diagnosis_time_sec / len(records)
+    print(f"\nNumber of diagnosis runs: {len(records)} (skipped {skipped})")
+    print(f"Total diagnosis time: {timedelta(seconds=int(total_diagnosis_time_sec))} "
+          f"({total_diagnosis_time_sec:.2f} sec)")
+    print(f"Average diagnosis time: {timedelta(seconds=int(avg_diagnosis_time_sec))} "
+          f"({avg_diagnosis_time_sec:.2f} sec)")
+
+    file_suffix = str(epsilon).replace(".", "_")
+    method_suffix = "UN_known_fr" if unknown_fault_rate else "known_fr"
+    file_path = f"taxi_v4_non_deterministic_PO_{method_suffix}_epsilon_{file_suffix}_SEEDS_{num_seeds}"
+
+    exper_write_records_to_excel_ind(records, file_path)
+    print(f"file was written at: {file_path}")
+
+
 def multiple_experiments_FrozenLake_SIF():
 
     global HARD_CODED_POLICY
