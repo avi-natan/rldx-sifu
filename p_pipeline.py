@@ -335,6 +335,15 @@ def _cell_value(v):
     except Exception:
         return str(v)
 
+def domain_results_dir(domain_name, run_folder=None):
+    """Output dir for a run: 'experimental results/<domain>/<run_folder or "general">'.
+
+    Always groups results by domain; within a domain, a run_folder (passed from
+    main) keeps a batch's files together, else they land in a shared 'general'.
+    """
+    return os.path.join("experimental results", domain_name, run_folder if run_folder else "general")
+
+
 def exper_write_records_to_excel_ind(records, experimental_filename, preferred_key_order=None, output_dir="experimental results/100_experiments"):
 
     """

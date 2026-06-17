@@ -34,6 +34,7 @@ from p_single_experiments import (single_experiment_manual, \
                                   single_experiment_FrozenLake_NON_DETERMINSTIC,
                                   multiple_experiment_FrozenLake_NON_DETERMINSTIC_FO,
                                   multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO,
+                                  multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO,
                                   single_experiment_stochastic_Taxi_v4, single_experiment_stochastic_FrozenLake)
 
 
@@ -63,6 +64,15 @@ if __name__ == '__main__':
         type=int,
         default=49,
         help="Number of map/policy pairs to run"
+    )
+
+    parser.add_argument(
+        "-o",
+        "--run_folder",
+        type=str,
+        default=None,
+        help="Sub-folder under 'experimental results/<domain>/' to collect this run's output "
+             "(default: 'general')"
     )
 
     args = parser.parse_args()
@@ -96,12 +106,20 @@ if __name__ == '__main__':
         multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(
             epsilon=args.epsilon,
             unknown_fault_rate=args.unknown_fault_rate,
-            maps_num=args.maps_num
+            maps_num=args.maps_num,
+            run_folder=args.run_folder
         )
         """
 
-        #single_experiment_stochastic_FrozenLake()
-        single_experiment_stochastic_Taxi_v4()
+        # multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO(
+        #     epsilon=args.epsilon,
+        #     unknown_fault_rate=args.unknown_fault_rate,
+        #     num_seeds=5,
+        #     run_folder=args.run_folder
+        # )
+
+        #single_experiment_stochastic_FrozenLake(run_folder=args.run_folder)
+        single_experiment_stochastic_Taxi_v4(run_folder=args.run_folder)
 
 
         # single_experiment_FrozenLake_NON_DETERMINSTIC()

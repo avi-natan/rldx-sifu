@@ -13,7 +13,7 @@ from p_pipeline import run_SIF_single_experiment, run_SN_single_experiment, run_
     run_SIFU5_single_experiment, run_SIFU6_single_experiment, run_SIFU7_single_experiment, run_SIFU8_single_experiment, \
     separate_trajectory, calculate_largest_hidden_gap, mask_states, rank_diagnoses_WFM, rank_diagnoses_SFM, \
     prepare_record, write_records_to_excel, exper_100_write_records_to_excel, run_NON_DETERMINSTIC_single_experiment_FO, \
-    exper_write_records_to_excel_ind, run_NON_DETERMINSTIC_single_experiment_PO
+    exper_write_records_to_excel_ind, run_NON_DETERMINSTIC_single_experiment_PO, domain_results_dir
 
 
 # =================================================================================================
@@ -782,7 +782,7 @@ def plot_num_gaps_vs_visibility_rate(records, title="Number of gaps vs visibilit
     for x, y, n in zip(xs, ys, counts):
         plt.annotate(str(n), (x, y), textcoords="offset points", xytext=(0, 6), ha="center")
 
-def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_rate=False, maps_num=49):
+def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_rate=False, maps_num=49, run_folder=None):
 
     global HARD_CODED_POLICY
     loaded = load_pairs_from_json("frozenlake_100_pairs_risk_averse_slippery.json")
@@ -929,11 +929,13 @@ def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fau
 
     file_path = f"frozen_lake_non_deterministic_PO_{method_suffix}_epsilon_{file_suffix}_MAPS_{maps_num}"
 
+    output_dir = domain_results_dir("FrozenLake_v1", run_folder)
     exper_write_records_to_excel_ind(
         records,
-        file_path
+        file_path,
+        output_dir=output_dir
     )
-    print(f"file was written at: {file_path}")
+    print(f"file was written at: {output_dir}/{file_path}.xlsx")
 
     for e in diagnosis_runtimes_ms:
         print(math.floor(e))
@@ -991,7 +993,7 @@ def single_experiment_Taxi_SIFU():
 
 
 
-def single_experiment_stochastic_FrozenLake():
+def single_experiment_stochastic_FrozenLake(run_folder=None):
 
 
     global HARD_CODED_POLICY
@@ -1083,13 +1085,15 @@ def single_experiment_stochastic_FrozenLake():
     method_suffix = "known_fr"
     file_path = f"frozen_lake_single_exper_{method_suffix}_epsilon_{file_suffix}"
 
+    output_dir = domain_results_dir(domain_name, run_folder)
     exper_write_records_to_excel_ind(
         records,
-        file_path
+        file_path,
+        output_dir=output_dir
     )
-    print(f"file was written at: {file_path}")
+    print(f"file was written at: {output_dir}/{file_path}.xlsx")
 
-def single_experiment_stochastic_Taxi_v4():
+def single_experiment_stochastic_Taxi_v4(run_folder=None):
 
     epsilon = 0.03
     unknown_fault_rate = False
@@ -1175,14 +1179,16 @@ def single_experiment_stochastic_Taxi_v4():
     method_suffix = "known_fr"
     file_path = f"taxi_v4_single_exper_non_deterministic_PO_{method_suffix}_epsilon_{file_suffix}"
 
+    output_dir = domain_results_dir(domain_name, run_folder)
     exper_write_records_to_excel_ind(
         records,
-        file_path
+        file_path,
+        output_dir=output_dir
     )
-    print(f"file was written at: {file_path}")
+    print(f"file was written at: {output_dir}/{file_path}.xlsx")
 
 
-def multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_rate=False, num_seeds=5):
+def multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_rate=False, num_seeds=5, run_folder=None):
     """Taxi-v4 sweep, mirroring multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO.
 
     Taxi has ONE fixed map and ONE policy, so the variation source is the SEED:
@@ -1294,8 +1300,9 @@ def multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_
     method_suffix = "UN_known_fr" if unknown_fault_rate else "known_fr"
     file_path = f"taxi_v4_non_deterministic_PO_{method_suffix}_epsilon_{file_suffix}_SEEDS_{num_seeds}"
 
-    exper_write_records_to_excel_ind(records, file_path)
-    print(f"file was written at: {file_path}")
+    output_dir = domain_results_dir(domain_name, run_folder)
+    exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)
+    print(f"file was written at: {output_dir}/{file_path}.xlsx")
 
 
 def multiple_experiments_FrozenLake_SIF():
