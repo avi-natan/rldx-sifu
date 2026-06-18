@@ -134,14 +134,20 @@ def top_used_actions(counts, k=3):
     return [a for a, _ in used[:k]]
 
 
-def select_execution_fault(counts, seed, pool=None, k=3):
-    """Pick one execution fault whose faulty action(s) are among the seed's top-k used
-    actions. Random, RNG seeded by `seed` (reproducible). Returns the action map."""
+EXEC_MIN_COUNT = 2   # the corrupted action must be commanded >= this (well-posed evidence)
+
+
+def select_execution_fault(counts, seed, pool=None, k=3, min_count=EXEC_MIN_COUNT):
+    """Pick one execution fault for a seed. Eligible faults are those with at least one
+    corrupted action that is (a) among the seed's top-k used actions AND (b) commanded
+    >= min_count times -> so the fault fires enough to be well-posed. Pick uniformly at
+    random, RNG seeded by `seed` (reproducible). Returns the action map."""
     if pool is None:
         pool = execution_fault_pool()
-    top = set(top_used_actions(counts, k))
-    productive = [m for m in pool if set(faulty_actions(m)) & top]
-    assert productive, f"no productive fault for seed {seed} (top={top})"
+    top = top_used_actions(counts, k)
+    eligible_actions = {a for a in top if counts.get(a, 0) >= min_count}
+    productive = [m for m in pool if set(faulty_actions(m)) & eligible_actions]
+    assert productive, f"no eligible fault for seed {seed} (eligible_actions={eligible_actions})"
     return random.Random(seed).choice(productive)
 
 
