@@ -127,10 +127,15 @@ def single_experiment_prepare_inputs_non_determinstic(domain_name,
     fault_mode_generator = FaultModelGeneratorDiscrete()
 
     # ### execute to get trajectory
+    # Minimum trajectory length is domain-aware: Taxi episodes terminate on
+    # successful delivery (~13-30 steps), so the FrozenLake-tuned 60 rejects most
+    # valid Taxi runs. Use a smaller floor for Taxi (still long enough for gaps).
+    MIN_TRAJECTORY_LEN = {"Taxi_v4": 25}.get(domain_name, 60)
+
     trajectory_execution = []
     faulty_actions_indices = []
     num_of_tries = 50
-    while len(faulty_actions_indices) == 0 or len(trajectory_execution) < 60:
+    while len(faulty_actions_indices) == 0 or len(trajectory_execution) < MIN_TRAJECTORY_LEN:
         trajectory_execution, faulty_actions_indices = execute(domain_name,
                                                                debug_print,
                                                                execution_fault_mode_name,
