@@ -23,12 +23,11 @@ from p_pipeline import (
 
 
 def run_hard_taxi_benchmark(num_seeds=3, epsilon=0.03, unknown_fault_rate=False,
-                            run_folder="hard_benchmark"):
+                            run_folder="hard_benchmark", debug_print=False):
     domain_name = "Taxi_v4"
     ml_model_name = "PPO"
     render_mode = "rgb_array"
     max_exec_len = 200
-    debug_print = False
     num_candidate_fault_modes = 10  # informational; fixed list overrides candidate generation
 
     fault_rate_candidates = [0.1, 0.3, 0.5, 0.7, 0.8] if unknown_fault_rate else None
@@ -71,6 +70,7 @@ def run_hard_taxi_benchmark(num_seeds=3, epsilon=0.03, unknown_fault_rate=False,
 
                 if not output:
                     skipped += 1
+                    print(f"  -> FAILED (no valid trajectory) seed={seed} FR={fault_rate} VR={percent_visible_states}")
                     continue
 
                 output["epsilon"] = epsilon
@@ -108,4 +108,5 @@ def run_hard_taxi_benchmark(num_seeds=3, epsilon=0.03, unknown_fault_rate=False,
 if __name__ == "__main__":
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 3
     eps = float(sys.argv[2]) if len(sys.argv) > 2 else 0.03
-    run_hard_taxi_benchmark(num_seeds=n, epsilon=eps)
+    dbg = (sys.argv[3].lower() in ("1", "true", "debug")) if len(sys.argv) > 3 else False
+    run_hard_taxi_benchmark(num_seeds=n, epsilon=eps, debug_print=dbg)
