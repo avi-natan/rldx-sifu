@@ -23,7 +23,7 @@ from p_pipeline import (
 
 
 def run_hard_taxi_benchmark(num_seeds=3, epsilon=0.03, unknown_fault_rate=False,
-                            run_folder="hard_benchmark", debug_print=False):
+                            run_folder="hard_benchmark", debug_print=False, seeds=None):
     domain_name = "Taxi_v4"
     ml_model_name = "PPO"
     render_mode = "rgb_array"
@@ -35,7 +35,12 @@ def run_hard_taxi_benchmark(num_seeds=3, epsilon=0.03, unknown_fault_rate=False,
     fault_rate_list = [0.5, 0.8]
     percent_visible_states_list = [20, 40, 60, 80, 100]
 
-    instances = BENCHMARK[:num_seeds]
+    # seeds=None -> first num_seeds benchmark instances; else an explicit seed list.
+    if seeds is None:
+        instances = BENCHMARK[:num_seeds]
+    else:
+        from hard_taxi_data import get_instance
+        instances = [(s, *get_instance(s)) for s in seeds]
     print(f"Running HARD Taxi-v4 benchmark | {len(instances)} seeds | epsilon={epsilon} | "
           f"unknown_fault_rate={unknown_fault_rate}\n")
 
