@@ -6,6 +6,7 @@ import h_rl_models
 from frozen_lake_random_envs import load_pairs_from_json, print_map_and_policy
 from h_fault_model_generator import FaultModelGeneratorDiscrete
 from h_wrappers import DOMAIN_KWARGS
+from hard_taxi_data import benchmark_seeds, get_instance
 from p_diagnosers import diagnosers
 from p_executor import execute_manual
 from p_pipeline import run_SIF_single_experiment, run_SN_single_experiment, run_W_single_experiment, \
@@ -1212,40 +1213,27 @@ def multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_
     debug_print = False
     num_candidate_fault_modes = 10
 
-    # Taxi action ids: 0=South/DOWN, 1=North/UP, 2=East/RIGHT, 3=West/LEFT, 4=Pickup, 5=Dropoff.
-    # A fault map is position=commanded, value=executed; healthy=[0,1,2,3,4,5].
-    possible_fault_mode_names = [
-        "[0,0,2,3,4,5]",
-        "[0,1,0,3,4,5]",
-        "[0,1,2,0,4,5]",
-        "[0,1,2,3,0,5]",
-        "[0,1,2,3,4,0]",
-        "[0,2,1,3,4,5]",
-        "[0,3,2,1,4,5]",
-        "[0,4,2,3,1,5]",
-        "[0,5,2,3,4,1]",
-        "[1,0,2,3,4,5]"
-    ]
+    # Each seed's execution fault and 10-candidate set come from the frozen hard benchmark
+    # (hard_taxi_data). The first num_seeds good seeds are used.
+    seeds = benchmark_seeds()[:num_seeds]
 
     fault_rate_list = [0.5, 0.8]
     percent_visible_states_list = [20, 40, 60, 80, 100]
 
     msg = (
-        f"Running Taxi-v4 PO diagnosis | epsilon={epsilon} | "
-        f"unknown_fault_rate={unknown_fault_rate} | num_seeds={num_seeds}"
+        f"Running Taxi-v4 PO diagnosis (HARD benchmark) | epsilon={epsilon} | "
+        f"unknown_fault_rate={unknown_fault_rate} | num_seeds={len(seeds)}"
     )
     if fault_rate_candidates is not None:
         msg += f" | fault_rate_candidates={fault_rate_candidates}"
     print(msg + "\n\n")
 
-    for i in range(num_seeds):
-        instance_seed = 42 + i
-        rng = random.Random(instance_seed)
-        execution_fault_mode_name = rng.choice(possible_fault_mode_names)
+    for i, instance_seed in enumerate(seeds):
+        execution_fault_mode_name, candidate_fault_modes = get_instance(instance_seed)
 
         now = datetime.now()
         dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
-        print(f'================= {dt_string}: SEED {instance_seed} ({i+1}/{num_seeds}), '
+        print(f'================= {dt_string}: SEED {instance_seed} ({i+1}/{len(seeds)}), '
               f'fault={execution_fault_mode_name} START =================')
 
         for percent_visible_states in percent_visible_states_list:
@@ -1262,11 +1250,12 @@ def multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_
                     instance_seed=instance_seed,
                     fault_probability=fault_rate,
                     percent_visible_states=percent_visible_states,
-                    possible_fault_mode_names=possible_fault_mode_names,
+                    possible_fault_mode_names=candidate_fault_modes,
                     num_candidate_fault_modes=num_candidate_fault_modes,
                     epsilon=epsilon,
                     unknown_fault_rate=unknown_fault_rate,
-                    fault_rate_candidates=fault_rate_candidates)
+                    fault_rate_candidates=fault_rate_candidates,
+                    fixed_candidate_fault_modes=candidate_fault_modes)
 
                 if not output:
                     skipped += 1

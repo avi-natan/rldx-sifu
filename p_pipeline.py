@@ -751,7 +751,8 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
                               unknown_fault_rate,
                               fault_rate_candidates,
                               epsilon,
-                              multi_experiment=False):
+                              multi_experiment=False,
+                              fixed_candidate_fault_modes=None):
 
     #### prepare the records database to be written to the excel file
     records = []
@@ -789,7 +790,17 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
     masked_observations = mask_states(observations, observation_mask)
 
     # ### prepare candidate fault modes
-    candidate_fault_modes = prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator)
+    if fixed_candidate_fault_modes is not None:
+        # Hard-benchmark mode: use the frozen, difficulty-graded candidate list
+        # (already includes the execution fault) instead of random candidates.
+        fault_modes = {}
+        for fmr in fixed_candidate_fault_modes:
+            fault_modes[fmr] = fault_mode_generator.generate_fault_model(fmr)
+        shuffled = list(fault_modes.items())
+        random.shuffle(shuffled)
+        candidate_fault_modes = dict(shuffled)
+    else:
+        candidate_fault_modes = prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator)
 
     # ### run SIF
 

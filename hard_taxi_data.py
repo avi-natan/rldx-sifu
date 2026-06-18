@@ -753,3 +753,33 @@ BENCHMARK = [
     (144, "[0,1,2,5,4,5]", ['[0,1,2,5,4,5]', '[0,1,2,5,3,5]', '[0,1,2,5,5,5]', '[0,1,2,5,2,5]', '[0,1,2,5,0,5]', '[2,1,2,5,4,5]', '[5,1,2,5,4,5]', '[0,5,2,5,4,5]', '[0,3,2,3,4,5]', '[1,1,2,3,4,5]']),
     (145, "[0,1,3,2,4,5]", ['[0,1,3,2,4,5]', '[0,1,3,2,0,5]', '[0,1,3,2,5,5]', '[0,1,3,2,3,5]', '[0,1,3,2,1,5]', '[4,1,3,2,4,5]', '[1,1,3,2,4,5]', '[0,2,3,2,4,5]', '[0,5,2,3,4,5]', '[2,1,2,3,4,5]']),
 ]
+
+
+# seed -> (execution_fault_str, [candidate_strs; execution fault first]) for O(1) lookup
+BENCHMARK_BY_SEED = {seed: (e, cands) for (seed, e, cands) in BENCHMARK}
+
+
+def benchmark_seeds():
+    """Return the sorted list of all good (usable) benchmark seeds — one per instance.
+
+    These are the 100 seeds that produced a well-posed hard instance; SKIPPED_SEEDS
+    are excluded. Iterate these and call get_instance(seed) for each.
+    """
+    return sorted(BENCHMARK_BY_SEED.keys())
+
+
+def get_instance(seed):
+    """Return (execution_fault_mode, candidate_fault_modes) for a benchmark seed.
+
+    execution_fault_mode: the injected fault as a string, e.g. "[0,2,1,3,4,5]".
+    candidate_fault_modes: the frozen 10-candidate list (execution fault first),
+    difficulty-graded for this seed.
+
+    Raises KeyError if the seed is not in the benchmark (e.g. a skipped seed).
+    """
+    if seed not in BENCHMARK_BY_SEED:
+        raise KeyError(
+            f"seed {seed} is not in the hard-Taxi benchmark "
+            f"(have {len(BENCHMARK)} seeds; skipped {SKIPPED_SEEDS})"
+        )
+    return BENCHMARK_BY_SEED[seed]
