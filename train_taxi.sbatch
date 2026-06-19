@@ -2,14 +2,14 @@
 #SBATCH --partition main
 #SBATCH --time 0-06:00:00
 #SBATCH --job-name rldx_taxi_train
-#SBATCH --output rldx_taxi_train-%J.out
+#SBATCH --output /home/ahmade/rldx_taxi_train-%J.out
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=8G
 #SBATCH --tmp=10G
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=ahmade@post.bgu.ac.il
 
-# Taxi-v4 PPO training search on the rainy env (CPU job, rldx_py311).
+# Taxi-v4 PPO training search on the rainy env (CPU job, rldx_py311_cpu env).
 # Trains several recipes, evaluates each with eval_taxi_policy.py (success@20),
 # writes models to /scratch, copies a results summary + best models back to
 # ~/rldx_taxi_results/<jobid> (OUTSIDE the repo, so the git checkout stays clean).
@@ -17,7 +17,7 @@
 
 echo "JOBID=$SLURM_JOBID NODE=$SLURM_JOB_NODELIST START=$(date)"
 module load anaconda
-source activate rldx_py311
+source activate rldx_py311_cpu
 cd ~/rldx_repo/rldx-sifu || exit 1
 git log --oneline -1
 
