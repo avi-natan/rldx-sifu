@@ -41,13 +41,68 @@ from stable_baselines3.common.env_util import make_vec_env
 
 TAXI_ENV_KWARGS = dict(fickle_passenger=False)
 
+# Taxi pickup/dropoff locations R,G,Y,B (taxi grid is 5x5), confirmed from env.unwrapped.locs.
+TAXI_LOCS = [(0, 0), (0, 4), (4, 0), (4, 3)]
 
-def make_vec(rainy_probability, n_envs, seed):
+
+class TaxiRewardShaping(gym.Wrapper):
+    """Potential-based reward shaping for Taxi (TRAINING ONLY).
+
+    Taxi's reward is sparse (+20 only on a full deliver), so from-scratch PPO
+    collapses to a "never attempt pickup/dropoff" local optimum (flat -200/episode)
+    and never discovers a delivery. This adds a dense shaping term that guides the
+    taxi toward the passenger, then toward the destination.
+
+    Potential-based shaping (Ng et al. 1999) is policy-invariant: F = gamma*phi(s')
+    - phi(s) does not change the optimal policy, so the learned policy is still
+    correct for the true (unshaped) env the diagnoser uses. Only the training env is
+    wrapped; the eval env stays the standard rainy Taxi.
+
+    phi(s):
+      * passenger not yet in taxi: -(taxi->passenger dist) - PICKUP_BONUS
+      * passenger in taxi:         -(taxi->destination dist)
+    The -PICKUP_BONUS offset (> grid diameter) makes the pickup transition raise the
+    potential, rewarding pickup; reaching the destination drives phi -> 0.
+    """
+    PICKUP_BONUS = 10.0
+
+    def __init__(self, env, gamma=0.99, scale=1.0):
+        super().__init__(env)
+        self.gamma = gamma
+        self.scale = scale
+        self._prev_phi = 0.0
+
+    def _phi(self, state):
+        tr, tc, pass_idx, dest_idx = self.env.unwrapped.decode(int(state))
+        if pass_idx < 4:  # passenger still waiting at a location
+            gr, gc = TAXI_LOCS[pass_idx]
+            return -(abs(tr - gr) + abs(tc - gc)) - self.PICKUP_BONUS
+        gr, gc = TAXI_LOCS[dest_idx]  # passenger in taxi -> head to destination
+        return -(abs(tr - gr) + abs(tc - gc))
+
+    def reset(self, **kwargs):
+        obs, info = self.env.reset(**kwargs)
+        self._prev_phi = self._phi(obs)
+        return obs, info
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        phi_next = 0.0 if terminated else self._phi(obs)
+        shaped = self.gamma * phi_next - self._prev_phi
+        self._prev_phi = phi_next
+        return obs, reward + self.scale * shaped, terminated, truncated, info
+
+
+def make_vec(rainy_probability, n_envs, seed, shaped=False, gamma=0.99, shaping_scale=1.0):
+    wrapper_class = TaxiRewardShaping if shaped else None
+    wrapper_kwargs = dict(gamma=gamma, scale=shaping_scale) if shaped else None
     return make_vec_env(
         "Taxi-v4",
         n_envs=n_envs,
         seed=seed,
         env_kwargs=dict(is_rainy=True, rainy_probability=rainy_probability, **TAXI_ENV_KWARGS),
+        wrapper_class=wrapper_class,
+        wrapper_kwargs=wrapper_kwargs,
     )
 
 
@@ -85,6 +140,11 @@ def parse_args():
     parser.add_argument("--eval_freq", type=int, default=25_000,
                         help="eval every this many steps PER ENV (EvalCallback semantics)")
     parser.add_argument("--n_eval_episodes", type=int, default=20)
+    # reward shaping (training env only; eval env stays the true rainy Taxi)
+    parser.add_argument("--shaped", action="store_true",
+                        help="add potential-based shaping that guides taxi->passenger->dest")
+    parser.add_argument("--shaping_scale", type=float, default=1.0,
+                        help="multiplier on the shaping term")
     # curriculum / warm start
     parser.add_argument("--init_from", type=str, default=None,
                         help="path to a .zip to warm-start from (continue training)")
@@ -104,8 +164,9 @@ def main():
     print(f"[train] run_dir = {run_dir}")
     print(f"[train] config = {vars(args)}")
 
-    train_env = make_vec(args.rainy_probability, args.n_envs, args.seed)
-    # eval on the TARGET env (same rainy_probability), separate seed offset
+    train_env = make_vec(args.rainy_probability, args.n_envs, args.seed,
+                         shaped=args.shaped, gamma=args.gamma, shaping_scale=args.shaping_scale)
+    # eval on the TARGET env (same rainy_probability), UNSHAPED, separate seed offset
     eval_env = make_vec(args.rainy_probability, 1, args.seed + 10_000)
 
     eval_callback = EvalCallback(
