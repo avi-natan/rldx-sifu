@@ -157,7 +157,10 @@ def single_experiment_prepare_inputs_non_determinstic(domain_name,
     return fault_mode_generator, trajectory_execution, faulty_actions_indices, registered_actions, observations
 
 
-def prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator):
+def prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator, seed=None):
+    # seed=None keeps legacy behaviour (global RNG); pass instance_seed for a reproducible,
+    # per-instance candidate draw + shuffle.
+    rng = random.Random(seed) if seed is not None else random
     if num_candidate_fault_modes == 0:
         candidate_fault_mode_names = []
     else:
@@ -166,7 +169,7 @@ def prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, po
         rest.remove(execution_fault_mode_name)
         i = 0
         while i < num_candidate_fault_modes - 1:
-            fmr = random.choice(rest)
+            fmr = rng.choice(rest)
             candidate_fault_mode_names.append(fmr)
             rest.remove(fmr)
             i += 1
@@ -176,7 +179,7 @@ def prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, po
         fault_modes[fmr] = fm
 
     l = list(fault_modes.items())
-    random.shuffle(l)
+    rng.shuffle(l)
     fault_modes = dict(l)
     return fault_modes
 
@@ -684,7 +687,8 @@ def run_NON_DETERMINSTIC_single_experiment_FO(domain_name,
     print(f'faulty actions indices: {faulty_actions_indices}')
 
     # ### generate observation mask
-    observation_mask = generate_observation_mask(len(observations), percent_visible_states)
+    # Per-instance mask seed in a namespace DISJOINT from the trajectory/fault RNG.
+    observation_mask = generate_observation_mask(len(observations), percent_visible_states, seed=instance_seed + 1_000_000)
     # ### calculate largest hidden gap
     longest_hidden_state_sequence = calculate_largest_hidden_gap(observation_mask)
     print(f'OBSERVATION MASK: {str(observation_mask)}')
@@ -696,7 +700,7 @@ def run_NON_DETERMINSTIC_single_experiment_FO(domain_name,
     masked_observations = mask_states(observations, observation_mask)
 
     # ### prepare candidate fault modes
-    candidate_fault_modes = prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator)
+    candidate_fault_modes = prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator, seed=instance_seed)
 
     # ### run SIF
     raw_output = fault_identification_non_deterministic_FO(debug_print=debug_print, render_mode=render_mode, instance_seed=instance_seed, ml_model_name=ml_model_name, domain_name=domain_name, observations=masked_observations, candidate_fault_modes=candidate_fault_modes)
@@ -776,7 +780,10 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
         print(f'faulty actions indices: {faulty_actions_indices}')
 
     # ### generate observation mask
-    observation_mask = generate_observation_mask(len(observations), percent_visible_states)
+    # Per-instance mask seed in a namespace DISJOINT from the trajectory/fault RNG
+    # (instance_seed), so the hiding pattern varies per instance, is reproducible, and is
+    # not correlated with which steps were faulty.
+    observation_mask = generate_observation_mask(len(observations), percent_visible_states, seed=instance_seed + 1_000_000)
     # ### calculate largest hidden gap
     longest_hidden_state_sequence = calculate_largest_hidden_gap(observation_mask)
 
@@ -802,7 +809,7 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
         random.Random(instance_seed).shuffle(shuffled)
         candidate_fault_modes = dict(shuffled)
     else:
-        candidate_fault_modes = prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator)
+        candidate_fault_modes = prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator, seed=instance_seed)
 
     # ### run SIF
 

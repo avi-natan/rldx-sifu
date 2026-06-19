@@ -37,7 +37,10 @@ def execute(domain_name,
     action_number = 1
     done = False
     exec_len = 1
-    obs, _ = env.reset()
+    # Start from the SEEDED reset above (no second, unseeded reset that would re-sample a
+    # different start state). This makes the trajectory's start a pure function of
+    # instance_seed AND matches profile_seed in hard_taxi_benchmark (single reset(seed)).
+    obs = initial_obs
     rng = random.Random(instance_seed)
 
     while not done and exec_len < max_exec_len:

@@ -20,7 +20,7 @@ def W(debug_print, render_mode, instance_seed, ml_model_name, domain_name, obser
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
     initial_obs, _ = simulator.reset(seed=instance_seed)
-    S_0, _ = simulator.reset()
+    S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
     # initialize time counting
@@ -74,7 +74,7 @@ def SN(debug_print, render_mode, instance_seed, ml_model_name, domain_name, obse
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
     initial_obs, _ = simulator.reset(seed=instance_seed)
-    S_0, _ = simulator.reset()
+    S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
     # initialize time counting
@@ -182,7 +182,7 @@ def fault_identification_non_deterministic_FO(debug_print, render_mode,
 
     simulator = make_wrapped_env(domain_name, render_mode)
     initial_obs, _ = simulator.reset(seed=instance_seed)
-    S_0, _ = simulator.reset()
+    S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
     # initialize time counting
@@ -449,7 +449,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
 
     simulator = make_wrapped_env(domain_name, render_mode)
     initial_obs, _ = simulator.reset(seed=instance_seed)
-    S_0, _ = simulator.reset()
+    S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
     diagnosis_time_sec_start = time.time()
@@ -676,7 +676,7 @@ def fault_identification_non_deterministic_PO(
     # load the environment as simulator
     simulator = make_wrapped_env(domain_name, render_mode)
     initial_obs, _ = simulator.reset(seed=instance_seed)
-    S_0, _ = simulator.reset()
+    S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
     # initialize time counting
@@ -882,7 +882,7 @@ def SIF(debug_print, render_mode, instance_seed, ml_model_name, domain_name, obs
 
     simulator = make_wrapped_env(domain_name, render_mode)
     initial_obs, _ = simulator.reset(seed=instance_seed)
-    S_0, _ = simulator.reset()
+    S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
     # initialize time counting
@@ -1026,7 +1026,7 @@ def SIFU(debug_print, render_mode, instance_seed, ml_model_name, domain_name, ob
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
     initial_obs, _ = simulator.reset(seed=instance_seed)
-    S_0, _ = simulator.reset()
+    S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
     # initialize time counting
@@ -1191,7 +1191,7 @@ def SIFU2(debug_print, render_mode, instance_seed, ml_model_name, domain_name, o
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
     initial_obs, _ = simulator.reset(seed=instance_seed)
-    S_0, _ = simulator.reset()
+    S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
     # initialize time counting
@@ -1368,7 +1368,7 @@ def SIFU3(debug_print, render_mode, instance_seed, ml_model_name, domain_name, o
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
     initial_obs, _ = simulator.reset(seed=instance_seed)
-    S_0, _ = simulator.reset()
+    S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
     # initialize time counting
@@ -1568,7 +1568,7 @@ def SIFU4(debug_print, render_mode, instance_seed, ml_model_name, domain_name, o
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
     initial_obs, _ = simulator.reset(seed=instance_seed)
-    S_0, _ = simulator.reset()
+    S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
     # initialize time counting
@@ -1783,7 +1783,7 @@ def SIFU5(debug_print, render_mode, instance_seed, ml_model_name, domain_name, o
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
     initial_obs, _ = simulator.reset(seed=instance_seed)
-    S_0, _ = simulator.reset()
+    S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
     # initialize time counting
@@ -1986,7 +1986,7 @@ def SIFU6(debug_print, render_mode, instance_seed, ml_model_name, domain_name, o
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
     initial_obs, _ = simulator.reset(seed=instance_seed)
-    S_0, _ = simulator.reset()
+    S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
     # initialize time counting
@@ -2196,7 +2196,7 @@ def SIFU7(debug_print, render_mode, instance_seed, ml_model_name, domain_name, o
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
     initial_obs, _ = simulator.reset(seed=instance_seed)
-    S_0, _ = simulator.reset()
+    S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
     # initialize time counting
@@ -2382,7 +2382,7 @@ def SIFU8(debug_print, render_mode, instance_seed, ml_model_name, domain_name, o
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
     initial_obs, _ = simulator.reset(seed=instance_seed)
-    S_0, _ = simulator.reset()
+    S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
     # initialize time counting
