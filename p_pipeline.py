@@ -797,7 +797,9 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
         for fmr in fixed_candidate_fault_modes:
             fault_modes[fmr] = fault_mode_generator.generate_fault_model(fmr)
         shuffled = list(fault_modes.items())
-        random.shuffle(shuffled)
+        # Seed the shuffle (per instance) so candidate order is reproducible across runs
+        # and identical across epsilons -> tie-breaking in the final ranking is stable.
+        random.Random(instance_seed).shuffle(shuffled)
         candidate_fault_modes = dict(shuffled)
     else:
         candidate_fault_modes = prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator)

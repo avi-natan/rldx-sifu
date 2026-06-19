@@ -330,7 +330,10 @@ def execute_one_trace(starting_state,
                       model,
                       debug_print):
 
-    initial_obs, _ = simulator.reset()
+    # Seed the env RNG per trace so rainy-slip outcomes are a pure function of this trace's
+    # global seed (instance_seed already carries the +i offset from the caller). set_state
+    # then overrides the sampled start; only the slip stream matters downstream.
+    initial_obs, _ = simulator.reset(seed=instance_seed)
     simulator.set_state(starting_state)
     done = False
     trunc = False
@@ -367,9 +370,13 @@ def simulate_m_traces(starting_state, observed_next_state, trace_length,
     for i in range(num_of_tries):
 
         rng = random.Random(instance_seed + i)
+        # Pass the SAME per-trace seed (instance_seed + i) used for fault-firing so the
+        # simulator's env RNG (rainy slips) is reseeded per trace -> each trace is a pure
+        # function of its global index, independent of candidate order and adaptive trace
+        # counts. Makes runs paired across epsilon and fully reproducible.
         sim_next_state = execute_one_trace(starting_state, trace_length,
                       fault_mode, fault_rate,
-                      domain_name, instance_seed, rng,
+                      domain_name, instance_seed + i, rng,
                       simulator, model, debug_print)
 
         simulated_state_equals_observed = comparator(sim_next_state, observed_next_state)
