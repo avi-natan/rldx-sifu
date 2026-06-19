@@ -7,6 +7,7 @@ from datetime import datetime
 import xlsxwriter
 
 from h_common import read_json_data
+from h_consts import SEED_BLOCK, MASK_OFFSET
 from h_fault_model_generator import FaultModelGeneratorDiscrete
 from p_diagnosers import diagnosers, SIF, SN, W, SIFU, SIFU2, SIFU3, SIFU4, SIFU5, SIFU6, SIFU7, SIFU8, \
     fault_identification_non_deterministic_FO, fault_identification_non_deterministic_PO, \
@@ -687,8 +688,8 @@ def run_NON_DETERMINSTIC_single_experiment_FO(domain_name,
     print(f'faulty actions indices: {faulty_actions_indices}')
 
     # ### generate observation mask
-    # Per-instance mask seed in a namespace DISJOINT from the trajectory/fault RNG.
-    observation_mask = generate_observation_mask(len(observations), percent_visible_states, seed=instance_seed + 1_000_000)
+    # Mask uses slot MASK_OFFSET of the instance's seed block (disjoint from the trajectory).
+    observation_mask = generate_observation_mask(len(observations), percent_visible_states, seed=instance_seed * SEED_BLOCK + MASK_OFFSET)
     # ### calculate largest hidden gap
     longest_hidden_state_sequence = calculate_largest_hidden_gap(observation_mask)
     print(f'OBSERVATION MASK: {str(observation_mask)}')
@@ -780,10 +781,9 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
         print(f'faulty actions indices: {faulty_actions_indices}')
 
     # ### generate observation mask
-    # Per-instance mask seed in a namespace DISJOINT from the trajectory/fault RNG
-    # (instance_seed), so the hiding pattern varies per instance, is reproducible, and is
-    # not correlated with which steps were faulty.
-    observation_mask = generate_observation_mask(len(observations), percent_visible_states, seed=instance_seed + 1_000_000)
+    # Mask uses slot MASK_OFFSET of the instance's seed block: n*SEED_BLOCK + MASK_OFFSET.
+    # Disjoint from the trajectory (slot 0) so hiding never correlates with where faults fired.
+    observation_mask = generate_observation_mask(len(observations), percent_visible_states, seed=instance_seed * SEED_BLOCK + MASK_OFFSET)
     # ### calculate largest hidden gap
     longest_hidden_state_sequence = calculate_largest_hidden_gap(observation_mask)
 

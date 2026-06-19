@@ -4,7 +4,7 @@ import time
 
 import gym
 
-from h_consts import DETERMINISTIC
+from h_consts import DETERMINISTIC, SEED_BLOCK
 from h_raw_state_comparators import comparators
 from h_rl_models import models, load_trained_model
 from h_state_refiners import refiners
@@ -19,7 +19,7 @@ def W(debug_print, render_mode, instance_seed, ml_model_name, domain_name, obser
 
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
-    initial_obs, _ = simulator.reset(seed=instance_seed)
+    initial_obs, _ = simulator.reset(seed=instance_seed * SEED_BLOCK)  # trajectory block base
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
@@ -73,7 +73,7 @@ def SN(debug_print, render_mode, instance_seed, ml_model_name, domain_name, obse
 
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
-    initial_obs, _ = simulator.reset(seed=instance_seed)
+    initial_obs, _ = simulator.reset(seed=instance_seed * SEED_BLOCK)  # trajectory block base
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
@@ -181,7 +181,7 @@ def fault_identification_non_deterministic_FO(debug_print, render_mode,
     # load the environment as simulator
 
     simulator = make_wrapped_env(domain_name, render_mode)
-    initial_obs, _ = simulator.reset(seed=instance_seed)
+    initial_obs, _ = simulator.reset(seed=instance_seed * SEED_BLOCK)  # trajectory block base
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
@@ -448,7 +448,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
     policy = load_trained_model(domain_name, ml_model_name)
 
     simulator = make_wrapped_env(domain_name, render_mode)
-    initial_obs, _ = simulator.reset(seed=instance_seed)
+    initial_obs, _ = simulator.reset(seed=instance_seed * SEED_BLOCK)  # trajectory block base
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
@@ -675,7 +675,7 @@ def fault_identification_non_deterministic_PO(
 
     # load the environment as simulator
     simulator = make_wrapped_env(domain_name, render_mode)
-    initial_obs, _ = simulator.reset(seed=instance_seed)
+    initial_obs, _ = simulator.reset(seed=instance_seed * SEED_BLOCK)  # trajectory block base
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
@@ -881,7 +881,7 @@ def SIF(debug_print, render_mode, instance_seed, ml_model_name, domain_name, obs
     # load the environment as simulator
 
     simulator = make_wrapped_env(domain_name, render_mode)
-    initial_obs, _ = simulator.reset(seed=instance_seed)
+    initial_obs, _ = simulator.reset(seed=instance_seed * SEED_BLOCK)  # trajectory block base
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
@@ -1025,7 +1025,7 @@ def SIFU(debug_print, render_mode, instance_seed, ml_model_name, domain_name, ob
 
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
-    initial_obs, _ = simulator.reset(seed=instance_seed)
+    initial_obs, _ = simulator.reset(seed=instance_seed * SEED_BLOCK)  # trajectory block base
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
@@ -1190,7 +1190,7 @@ def SIFU2(debug_print, render_mode, instance_seed, ml_model_name, domain_name, o
 
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
-    initial_obs, _ = simulator.reset(seed=instance_seed)
+    initial_obs, _ = simulator.reset(seed=instance_seed * SEED_BLOCK)  # trajectory block base
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
@@ -1367,7 +1367,7 @@ def SIFU3(debug_print, render_mode, instance_seed, ml_model_name, domain_name, o
 
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
-    initial_obs, _ = simulator.reset(seed=instance_seed)
+    initial_obs, _ = simulator.reset(seed=instance_seed * SEED_BLOCK)  # trajectory block base
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
@@ -1567,7 +1567,7 @@ def SIFU4(debug_print, render_mode, instance_seed, ml_model_name, domain_name, o
 
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
-    initial_obs, _ = simulator.reset(seed=instance_seed)
+    initial_obs, _ = simulator.reset(seed=instance_seed * SEED_BLOCK)  # trajectory block base
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
@@ -1782,7 +1782,7 @@ def SIFU5(debug_print, render_mode, instance_seed, ml_model_name, domain_name, o
 
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
-    initial_obs, _ = simulator.reset(seed=instance_seed)
+    initial_obs, _ = simulator.reset(seed=instance_seed * SEED_BLOCK)  # trajectory block base
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
@@ -1985,7 +1985,7 @@ def SIFU6(debug_print, render_mode, instance_seed, ml_model_name, domain_name, o
 
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
-    initial_obs, _ = simulator.reset(seed=instance_seed)
+    initial_obs, _ = simulator.reset(seed=instance_seed * SEED_BLOCK)  # trajectory block base
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
@@ -2195,7 +2195,7 @@ def SIFU7(debug_print, render_mode, instance_seed, ml_model_name, domain_name, o
 
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
-    initial_obs, _ = simulator.reset(seed=instance_seed)
+    initial_obs, _ = simulator.reset(seed=instance_seed * SEED_BLOCK)  # trajectory block base
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
@@ -2381,7 +2381,7 @@ def SIFU8(debug_print, render_mode, instance_seed, ml_model_name, domain_name, o
 
     # load the environment as simulator
     simulator = wrappers[domain_name](gym.make(domain_name.replace('_', '-'), render_mode=render_mode))
-    initial_obs, _ = simulator.reset(seed=instance_seed)
+    initial_obs, _ = simulator.reset(seed=instance_seed * SEED_BLOCK)  # trajectory block base
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
