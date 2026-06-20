@@ -21,7 +21,6 @@ from stable_baselines3 import PPO
 
 MODELS_DIR = "environments/Taxi_v4/models/PPO"
 OLD_GOOD = os.path.join(MODELS_DIR, "Taxi_v4__PPO.zip")
-RAINY_1M = os.path.join(MODELS_DIR, "Taxi_v4_PPO_rainy_0.7_steps_1000000_seed_42.zip")
 
 # Taxi: +20 on successful dropoff (the only terminating reward), -10 illegal, -1/step.
 DELIVERY_REWARD = 20
@@ -103,7 +102,7 @@ def main():
                         help="print per-seed outcome")
     args = parser.parse_args()
 
-    targets = [args.model] if args.model else [OLD_GOOD, RAINY_1M]
+    targets = [args.model] if args.model else [OLD_GOOD]
     for model_path in targets:
         report(model_path, args.n_seeds, args.rainy_probability, args.base_seed, args.verbose)
 
