@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import h_rl_models
 from frozen_lake_random_envs import load_pairs_from_json, print_map_and_policy
+from h_consts import SEED_BLOCK
 from h_fault_model_generator import FaultModelGeneratorDiscrete
 from h_wrappers import DOMAIN_KWARGS
 from hard_taxi_data import benchmark_seeds, get_instance
@@ -680,7 +681,7 @@ def multiple_experiment_FrozenLake_NON_DETERMINSTIC_FO():
                                                              max_exec_len=max_exec_len,
                                                              debug_print=debug_print,
                                                              execution_fault_mode_name=execution_fault_mode_name,
-                                                             instance_seed=instance_seed,
+                                                             instance_seed=instance_seed * SEED_BLOCK,  # pass the block base; run_FO derives all offsets
                                                              fault_probability=fault_rate,
                                                              percent_visible_states=percent_visible_states,
                                                              possible_fault_mode_names=possible_fault_mode_names,
@@ -868,7 +869,7 @@ def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fau
                                                                  max_exec_len=max_exec_len,
                                                                  debug_print=debug_print,
                                                                  execution_fault_mode_name=execution_fault_mode_name,
-                                                                 instance_seed=instance_seed,
+                                                                 instance_seed=instance_seed * SEED_BLOCK,  # pass the block base; run_PO derives all offsets
                                                                  fault_probability=fault_rate,
                                                                  percent_visible_states=percent_visible_states,
                                                                  possible_fault_mode_names=possible_fault_mode_names,
@@ -1055,7 +1056,7 @@ def single_experiment_stochastic_FrozenLake(run_folder=None):
         max_exec_len=max_exec_len,
         debug_print=debug_print,
         execution_fault_mode_name=execution_fault_mode_name,
-        instance_seed=instance_seed,
+        instance_seed=instance_seed * SEED_BLOCK,  # pass the block base; run_PO derives all offsets
         fault_probability=fault_rate,
         percent_visible_states=percent_visible_states,
         possible_fault_mode_names=possible_fault_mode_names,
@@ -1148,7 +1149,7 @@ def single_experiment_stochastic_Taxi_v4(run_folder=None):
             max_exec_len=max_exec_len,
             debug_print=debug_print,
             execution_fault_mode_name=execution_fault_mode_name,
-            instance_seed=instance_seed,
+            instance_seed=instance_seed * SEED_BLOCK,  # pass the block base; run_PO derives all offsets
             fault_probability=fault_rate,
             percent_visible_states=percent_visible_states,
             possible_fault_mode_names=possible_fault_mode_names,
@@ -1247,7 +1248,7 @@ def multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_
                     max_exec_len=max_exec_len,
                     debug_print=debug_print,
                     execution_fault_mode_name=execution_fault_mode_name,
-                    instance_seed=instance_seed,
+                    instance_seed=instance_seed * SEED_BLOCK,  # pass the block base; run_PO derives all offsets
                     fault_probability=fault_rate,
                     percent_visible_states=percent_visible_states,
                     possible_fault_mode_names=candidate_fault_modes,

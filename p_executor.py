@@ -2,7 +2,7 @@ import random
 
 import gym
 
-from h_consts import DETERMINISTIC, SEED_BLOCK
+from h_consts import DETERMINISTIC
 from h_rl_models import models, load_trained_model
 from h_state_refiners import refiners
 from h_wrappers import wrappers, make_wrapped_env
@@ -16,15 +16,17 @@ def execute(domain_name,
             render_mode,
             ml_model_name,
             fault_mode_generator,
-            max_exec_len):
+            max_exec_len,
+            fault_seed_offset=0):
     print(f'executing with fault mode: {execution_fault_mode_name}\n')
 
     # initialize environment
-    # Trajectory uses the instance's block base (n*SEED_BLOCK) so each instance owns a
-    # disjoint random stream; same seed drives env slips and (below) fault-firing.
-    trajectory_seed = instance_seed * SEED_BLOCK
+    # instance_seed is the instance's block base (n*SEED_BLOCK), already resolved by the
+    # caller. The env reset (slips) uses the base directly (slot 0); the fault-firing RNG
+    # below uses a disjoint slot (base + fault_seed_offset) so the two streams never coincide.
+    # Legacy callers leave fault_seed_offset=0 (historical single-stream behaviour preserved).
     env = make_wrapped_env(domain_name, render_mode)
-    initial_obs, _ = env.reset(seed=trajectory_seed)
+    initial_obs, _ = env.reset(seed=instance_seed)
     # print(f'initial observation: {initial_obs.tolist()}')
 
     # load trained model
@@ -44,7 +46,7 @@ def execute(domain_name,
     # different start state). This makes the trajectory's start a pure function of
     # instance_seed AND matches profile_seed in hard_taxi_benchmark (single reset(seed)).
     obs = initial_obs
-    rng = random.Random(trajectory_seed)
+    rng = random.Random(instance_seed + fault_seed_offset)
 
     while not done and exec_len < max_exec_len:
         # print(f"-current state is {obs}-")

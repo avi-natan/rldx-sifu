@@ -4,7 +4,7 @@ import time
 
 import gym
 
-from h_consts import DETERMINISTIC, SEED_BLOCK
+from h_consts import DETERMINISTIC, SEED_BLOCK, SIMULATION_OFFSET
 from h_raw_state_comparators import comparators
 from h_rl_models import models, load_trained_model
 from h_state_refiners import refiners
@@ -181,7 +181,7 @@ def fault_identification_non_deterministic_FO(debug_print, render_mode,
     # load the environment as simulator
 
     simulator = make_wrapped_env(domain_name, render_mode)
-    initial_obs, _ = simulator.reset(seed=instance_seed * SEED_BLOCK)  # trajectory block base
+    initial_obs, _ = simulator.reset(seed=instance_seed)  # instance_seed IS the block base (slot 0)
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
@@ -448,7 +448,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
     policy = load_trained_model(domain_name, ml_model_name)
 
     simulator = make_wrapped_env(domain_name, render_mode)
-    initial_obs, _ = simulator.reset(seed=instance_seed * SEED_BLOCK)  # trajectory block base
+    initial_obs, _ = simulator.reset(seed=instance_seed)  # instance_seed IS the block base (slot 0)
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
@@ -497,7 +497,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
                     candidate_fault_modes[curr_fault_key],
                     curr_fault_rate,
                     domain_name,
-                    instance_seed,
+                    instance_seed + SIMULATION_OFFSET,  # MC trace range, disjoint from slots 0-3
                     simulator,
                     policy,
                     comparators[domain_name],
@@ -675,7 +675,7 @@ def fault_identification_non_deterministic_PO(
 
     # load the environment as simulator
     simulator = make_wrapped_env(domain_name, render_mode)
-    initial_obs, _ = simulator.reset(seed=instance_seed * SEED_BLOCK)  # trajectory block base
+    initial_obs, _ = simulator.reset(seed=instance_seed)  # instance_seed IS the block base (slot 0)
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
 
@@ -724,7 +724,7 @@ def fault_identification_non_deterministic_PO(
                                                    candidate_fault_modes[curr_fault_key],
                                                    fault_rate,
                                                    domain_name,
-                                                   instance_seed,
+                                                   instance_seed + SIMULATION_OFFSET,  # MC trace range, disjoint from slots 0-3
                                                    simulator,
                                                    policy,
                                                    comparators[domain_name],

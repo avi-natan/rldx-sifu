@@ -14,6 +14,7 @@ Defaults: num_seeds=3, epsilon=0.03. Writes one .xlsx under
 import sys
 from datetime import datetime, timedelta
 
+from h_consts import SEED_BLOCK
 from hard_taxi_data import BENCHMARK
 from p_pipeline import (
     run_NON_DETERMINSTIC_single_experiment_PO,
@@ -63,7 +64,7 @@ def run_hard_taxi_benchmark(num_seeds=3, epsilon=0.03, unknown_fault_rate=False,
                     max_exec_len=max_exec_len,
                     debug_print=debug_print,
                     execution_fault_mode_name=execution_fault_mode_name,
-                    instance_seed=seed,
+                    instance_seed=seed * SEED_BLOCK,  # pass the block base; run_PO derives all offsets
                     fault_probability=fault_rate,
                     percent_visible_states=percent_visible_states,
                     possible_fault_mode_names=candidate_fault_modes,

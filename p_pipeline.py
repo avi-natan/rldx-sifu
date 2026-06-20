@@ -7,7 +7,7 @@ from datetime import datetime
 import xlsxwriter
 
 from h_common import read_json_data
-from h_consts import SEED_BLOCK, MASK_OFFSET
+from h_consts import SEED_BLOCK, FAULT_OFFSET, MASK_OFFSET, CANDIDATE_OFFSET
 from h_fault_model_generator import FaultModelGeneratorDiscrete
 from p_diagnosers import diagnosers, SIF, SN, W, SIFU, SIFU2, SIFU3, SIFU4, SIFU5, SIFU6, SIFU7, SIFU8, \
     fault_identification_non_deterministic_FO, fault_identification_non_deterministic_PO, \
@@ -99,10 +99,12 @@ def single_experiment_prepare_inputs(domain_name,
     trajectory_execution = []
     faulty_actions_indices = []
     while len(faulty_actions_indices) == 0:
+        # Legacy path passes the SMALL seed; resolve the block base here so execute()
+        # (which no longer multiplies internally) reseeds the env at slot 0 as before.
         trajectory_execution, faulty_actions_indices = execute(domain_name,
                                                                debug_print,
                                                                execution_fault_mode_name,
-                                                               instance_seed,
+                                                               instance_seed * SEED_BLOCK,
                                                                fault_probability,
                                                                render_mode,
                                                                ml_model_name,
@@ -137,6 +139,8 @@ def single_experiment_prepare_inputs_non_determinstic(domain_name,
     faulty_actions_indices = []
     num_of_tries = 50
     while len(faulty_actions_indices) == 0 or len(trajectory_execution) < MIN_TRAJECTORY_LEN:
+        # instance_seed is already the block base (n*SEED_BLOCK). Env reset uses slot 0;
+        # fault firing uses slot FAULT_OFFSET (disjoint stream within the same block).
         trajectory_execution, faulty_actions_indices = execute(domain_name,
                                                                debug_print,
                                                                execution_fault_mode_name,
@@ -145,7 +149,8 @@ def single_experiment_prepare_inputs_non_determinstic(domain_name,
                                                                render_mode,
                                                                ml_model_name,
                                                                fault_mode_generator,
-                                                               max_exec_len)
+                                                               max_exec_len,
+                                                               fault_seed_offset=FAULT_OFFSET)
         num_of_tries -= 1
         if num_of_tries<=0:
             print("creating trajectory failed after 50 tries")
@@ -688,8 +693,8 @@ def run_NON_DETERMINSTIC_single_experiment_FO(domain_name,
     print(f'faulty actions indices: {faulty_actions_indices}')
 
     # ### generate observation mask
-    # Mask uses slot MASK_OFFSET of the instance's seed block (disjoint from the trajectory).
-    observation_mask = generate_observation_mask(len(observations), percent_visible_states, seed=instance_seed * SEED_BLOCK + MASK_OFFSET)
+    # instance_seed is the block base; mask uses slot MASK_OFFSET (disjoint from trajectory).
+    observation_mask = generate_observation_mask(len(observations), percent_visible_states, seed=instance_seed + MASK_OFFSET)
     # ### calculate largest hidden gap
     longest_hidden_state_sequence = calculate_largest_hidden_gap(observation_mask)
     print(f'OBSERVATION MASK: {str(observation_mask)}')
@@ -701,7 +706,7 @@ def run_NON_DETERMINSTIC_single_experiment_FO(domain_name,
     masked_observations = mask_states(observations, observation_mask)
 
     # ### prepare candidate fault modes
-    candidate_fault_modes = prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator, seed=instance_seed)
+    candidate_fault_modes = prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator, seed=instance_seed + CANDIDATE_OFFSET)
 
     # ### run SIF
     raw_output = fault_identification_non_deterministic_FO(debug_print=debug_print, render_mode=render_mode, instance_seed=instance_seed, ml_model_name=ml_model_name, domain_name=domain_name, observations=masked_observations, candidate_fault_modes=candidate_fault_modes)
@@ -781,9 +786,10 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
         print(f'faulty actions indices: {faulty_actions_indices}')
 
     # ### generate observation mask
-    # Mask uses slot MASK_OFFSET of the instance's seed block: n*SEED_BLOCK + MASK_OFFSET.
-    # Disjoint from the trajectory (slot 0) so hiding never correlates with where faults fired.
-    observation_mask = generate_observation_mask(len(observations), percent_visible_states, seed=instance_seed * SEED_BLOCK + MASK_OFFSET)
+    # instance_seed is the block base; mask uses slot MASK_OFFSET (base + MASK_OFFSET).
+    # Disjoint from the trajectory (slots 0/FAULT_OFFSET) so hiding never correlates with
+    # where faults fired.
+    observation_mask = generate_observation_mask(len(observations), percent_visible_states, seed=instance_seed + MASK_OFFSET)
     # ### calculate largest hidden gap
     longest_hidden_state_sequence = calculate_largest_hidden_gap(observation_mask)
 
@@ -804,12 +810,13 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
         for fmr in fixed_candidate_fault_modes:
             fault_modes[fmr] = fault_mode_generator.generate_fault_model(fmr)
         shuffled = list(fault_modes.items())
-        # Seed the shuffle (per instance) so candidate order is reproducible across runs
-        # and identical across epsilons -> tie-breaking in the final ranking is stable.
-        random.Random(instance_seed).shuffle(shuffled)
+        # Seed the shuffle from slot CANDIDATE_OFFSET of the instance block so candidate order
+        # is reproducible, identical across epsilons (stable tie-breaking), AND on a stream
+        # disjoint from the trajectory's fault-firing RNG (which also uses random.Random).
+        random.Random(instance_seed + CANDIDATE_OFFSET).shuffle(shuffled)
         candidate_fault_modes = dict(shuffled)
     else:
-        candidate_fault_modes = prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator, seed=instance_seed)
+        candidate_fault_modes = prepare_fault_modes(num_candidate_fault_modes, execution_fault_mode_name, possible_fault_mode_names, fault_mode_generator, seed=instance_seed + CANDIDATE_OFFSET)
 
     # ### run SIF
 
