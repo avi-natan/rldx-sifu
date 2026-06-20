@@ -33,3 +33,13 @@ FAULT_OFFSET = 1
 MASK_OFFSET = 2
 CANDIDATE_OFFSET = 3
 SIMULATION_OFFSET = WINDOW_SIZE * RETRY_WINDOWS   # = 400, above all retry windows
+
+# MC gap-decorrelation stride. A diagnosis gap starting at observed index L uses MC seeds
+#   base + SIMULATION_OFFSET + L + t*MAX_STATES   (t = 0,1,2,... over traces)
+# so each gap sits on its own residue class mod MAX_STATES (gaps never collide), while the
+# seed is independent of candidate/rate (candidates share -> CRN). MAX_STATES must be >= the
+# longest possible trajectory (= max_exec_len) so every gap-start index L is < MAX_STATES.
+# Worst case is 100% visibility: at most max_exec_len observed states. Keep
+# SIMULATION_OFFSET + MAX_STATES + max_tries*MAX_STATES < SEED_BLOCK (use 10_000_000 for
+# small epsilon, where max_tries grows ~ (0.025/epsilon)^2).
+MAX_STATES = 200

@@ -1,10 +1,11 @@
 import copy
 import math
 import time
+import random
 
 import gym
 
-from h_consts import DETERMINISTIC, SEED_BLOCK, SIMULATION_OFFSET
+from h_consts import DETERMINISTIC, SEED_BLOCK, SIMULATION_OFFSET, MAX_STATES
 from h_raw_state_comparators import comparators
 from h_rl_models import models, load_trained_model
 from h_state_refiners import refiners
@@ -317,7 +318,29 @@ def fault_identification_non_deterministic_FO(debug_print, render_mode,
     output["extra_output"] = extra_output
     return output
 
+"""
+def simulate_m_traces(starting_state, observed_next_state, trace_length,
+                      num_of_tries, fault_mode, fault_rate,
+                      domain_name, instance_seed,
+                      simulator, model, comparator, debug_print):
 
+    num_of_hits = 0
+
+    for i in range(num_of_tries):
+        trace_seed = instance_seed + i * MAX_STATES
+        rng = random.Random(trace_seed)
+        sim_next_state = execute_one_trace(starting_state, trace_length,
+                      fault_mode, fault_rate,
+                      domain_name, trace_seed, rng,
+                      simulator, model, debug_print)
+
+        simulated_state_equals_observed = comparator(sim_next_state, observed_next_state)
+
+        if simulated_state_equals_observed:
+            num_of_hits += 1
+
+    return num_of_hits
+"""
 
 def execute_one_trace(starting_state,
                       trace_length,
@@ -330,9 +353,6 @@ def execute_one_trace(starting_state,
                       model,
                       debug_print):
 
-    # Seed the env RNG per trace so rainy-slip outcomes are a pure function of this trace's
-    # global seed (instance_seed already carries the +i offset from the caller). set_state
-    # then overrides the sampled start; only the slip stream matters downstream.
     initial_obs, _ = simulator.reset(seed=instance_seed)
     simulator.set_state(starting_state)
     done = False
@@ -357,35 +377,6 @@ def execute_one_trace(starting_state,
 
     return obs
 
-import random
-
-
-def simulate_m_traces(starting_state, observed_next_state, trace_length,
-                      num_of_tries, fault_mode, fault_rate,
-                      domain_name, instance_seed,
-                      simulator, model, comparator, debug_print):
-
-    num_of_hits = 0
-
-    for i in range(num_of_tries):
-
-        rng = random.Random(instance_seed + i)
-        # Pass the SAME per-trace seed (instance_seed + i) used for fault-firing so the
-        # simulator's env RNG (rainy slips) is reseeded per trace -> each trace is a pure
-        # function of its global index, independent of candidate order and adaptive trace
-        # counts. Makes runs paired across epsilon and fully reproducible.
-        sim_next_state = execute_one_trace(starting_state, trace_length,
-                      fault_mode, fault_rate,
-                      domain_name, instance_seed + i, rng,
-                      simulator, model, debug_print)
-
-        simulated_state_equals_observed = comparator(sim_next_state, observed_next_state)
-
-        if simulated_state_equals_observed:
-            num_of_hits += 1
-
-    return num_of_hits
-
 def simulate_m_traces_adaptive_monte_carlo(starting_state, observed_next_state, trace_length,
                       fault_mode, fault_rate,
                       domain_name, instance_seed,
@@ -398,12 +389,26 @@ def simulate_m_traces_adaptive_monte_carlo(starting_state, observed_next_state, 
     curr_num_of_tries = 0
     num_of_hits = 0
     margin = None
+    curr_sim_seed = instance_seed
+
+    # Allocate the fault-firing RNG ONCE; reseed it per trace instead of building a new
+    # Random object each iteration (rng.seed(x) gives the same state as Random(x), so this is
+    # behaviour-identical, just without the per-trace allocation).
+    rng = random.Random()
 
     while True:
-        num_of_hits += simulate_m_traces(starting_state, observed_next_state, trace_length,
-                      batch_size, fault_mode, fault_rate,
-                      domain_name, instance_seed + curr_num_of_tries,
-                      simulator, model, comparator, debug_print)
+        for i in range(batch_size):
+            rng.seed(curr_sim_seed)
+            sim_next_state = execute_one_trace(starting_state, trace_length,
+                                               fault_mode, fault_rate,
+                                               domain_name, curr_sim_seed, rng,
+                                               simulator, model, debug_print)
+
+            if comparator(sim_next_state, observed_next_state):
+                num_of_hits += 1
+
+            curr_sim_seed += MAX_STATES
+
         curr_num_of_tries += batch_size
 
         p_hat = num_of_hits / curr_num_of_tries
@@ -445,12 +450,18 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
         epsilon,
         ):
 
+    diagnosis_seed = instance_seed + SIMULATION_OFFSET
+
     policy = load_trained_model(domain_name, ml_model_name)
 
     simulator = make_wrapped_env(domain_name, render_mode)
     initial_obs, _ = simulator.reset(seed=instance_seed)  # instance_seed IS the block base (slot 0)
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
+
+    assert len(observations) <= MAX_STATES, (
+        f"trajectory length {len(observations)} exceeds MAX_STATES {MAX_STATES}; "
+        f"raise MAX_STATES in h_consts.")
 
     diagnosis_time_sec_start = time.time()
 
@@ -482,6 +493,14 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
         gap_bonus = int(150 * current_gap_length * scale)
         max_tries = base_max + gap_bonus
 
+        current_gap_seed = diagnosis_seed + last_observed_index
+        top_seed_offset_during_iterations = (max_tries + 50) * MAX_STATES
+
+        assert current_gap_seed + top_seed_offset_during_iterations  < instance_seed + SEED_BLOCK, (
+            f"MC seeds overflow this instance's block: top offset {current_gap_seed + top_seed_offset_during_iterations} >= "
+            f"SEED_BLOCK {instance_seed + SEED_BLOCK} (epsilon={epsilon}, max_tries={max_tries}, "
+            f"MAX_STATES={MAX_STATES}). Increase SEED_BLOCK (e.g. 10_000_000).")
+
         gap_start_time = time.time()
 
         for curr_fault_rate in fault_rate_candidates:
@@ -497,7 +516,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
                     candidate_fault_modes[curr_fault_key],
                     curr_fault_rate,
                     domain_name,
-                    instance_seed + SIMULATION_OFFSET,  # MC trace range, disjoint from slots 0-3
+                    current_gap_seed,  # gap residue class; per-trace stride = MAX_STATES
                     simulator,
                     policy,
                     comparators[domain_name],
@@ -670,6 +689,8 @@ def fault_identification_non_deterministic_PO(
         domain_name, observations,
         candidate_fault_modes, epsilon, fault_rate = None):
 
+    diagnosis_seed = instance_seed + SIMULATION_OFFSET
+
     # load trained model as policy
     policy = load_trained_model(domain_name, ml_model_name)
 
@@ -678,6 +699,12 @@ def fault_identification_non_deterministic_PO(
     initial_obs, _ = simulator.reset(seed=instance_seed)  # instance_seed IS the block base (slot 0)
     S_0 = initial_obs  # use the seeded reset's start (no second, unseeded reset)
     assert comparators[domain_name](observations[0], S_0)
+
+    # MC seeding needs every gap-start index < MAX_STATES (the seed stride) so gaps stay on
+    # distinct residue classes mod MAX_STATES; guarantee the trajectory fits.
+    assert len(observations) <= MAX_STATES, (
+        f"trajectory length {len(observations)} exceeds MAX_STATES {MAX_STATES}; "
+        f"raise MAX_STATES in h_consts.")
 
     # initialize time counting
     diagnosis_time_sec_start = time.time()
@@ -713,6 +740,14 @@ def fault_identification_non_deterministic_PO(
         gap_bonus = int(150 * current_gap_length * scale)
         max_tries = base_max + gap_bonus
 
+        current_gap_seed = diagnosis_seed + last_observed_index
+        top_seed_offset_during_iterations = (max_tries + 50) * MAX_STATES
+
+        assert current_gap_seed + top_seed_offset_during_iterations  < instance_seed + SEED_BLOCK, (
+            f"MC seeds overflow this instance's block: top offset {current_gap_seed + top_seed_offset_during_iterations} >= "
+            f"SEED_BLOCK {instance_seed + SEED_BLOCK} (epsilon={epsilon}, max_tries={max_tries}, "
+            f"MAX_STATES={MAX_STATES}). Increase SEED_BLOCK (e.g. 10_000_000).")
+
         # print(f"epsilon1 ={epsilon}, gap length ={current_gap_length} so max_tries = {max_tries}")
 
         gap_start_time = time.time()
@@ -724,7 +759,7 @@ def fault_identification_non_deterministic_PO(
                                                    candidate_fault_modes[curr_fault_key],
                                                    fault_rate,
                                                    domain_name,
-                                                   instance_seed + SIMULATION_OFFSET,  # MC trace range, disjoint from slots 0-3
+                                                   current_gap_seed,  # gap residue class; per-trace stride = MAX_STATES
                                                    simulator,
                                                    policy,
                                                    comparators[domain_name],
