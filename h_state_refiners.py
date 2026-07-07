@@ -19,10 +19,15 @@ def taxi_refiner(raw_state):
     refined_state = int(raw_state)
     return refined_state
 
+def lunar_lander_refiner(raw_state):
+    refined_state = numpy.array(raw_state, dtype=numpy.float32)
+    return refined_state
+
 
 refiners = {
     "Acrobot_v1": acrobot_refiner,
     "CartPole_v1": cart_pole_refiner,
     "MountainCar_v0": mountain_car_refiner,
-    "Taxi_v3": taxi_refiner
+    "Taxi_v3": taxi_refiner,
+    "LunarLander_v2": lunar_lander_refiner
 }
