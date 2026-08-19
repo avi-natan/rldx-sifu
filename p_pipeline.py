@@ -7,7 +7,7 @@ from datetime import datetime
 import xlsxwriter
 
 from h_common import read_json_data
-from h_consts import SEED_BLOCK, FAULT_OFFSET, MASK_OFFSET, CANDIDATE_OFFSET
+from h_consts import SEED_BLOCK, FAULT_OFFSET, MASK_OFFSET, CANDIDATE_OFFSET, SIMULATION_OFFSET
 from h_fault_model_generator import FaultModelGeneratorDiscrete
 from p_diagnosers import diagnosers, SIF, SN, W, SIFU, SIFU2, SIFU3, SIFU4, SIFU5, SIFU6, SIFU7, SIFU8, \
     fault_identification_non_deterministic_FO, fault_identification_non_deterministic_PO, \
@@ -137,10 +137,12 @@ def single_experiment_prepare_inputs_non_determinstic(domain_name,
 
     trajectory_execution = []
     faulty_actions_indices = []
-    num_of_tries = 50
-    while len(faulty_actions_indices) == 0 or len(trajectory_execution) < MIN_TRAJECTORY_LEN:
-        # instance_seed is already the block base (n*SEED_BLOCK). Env reset uses slot 0;
-        # fault firing uses slot FAULT_OFFSET (disjoint stream within the same block).
+    # Firing sweep: env stays at slot 0 (instance_seed) so the geometry is fixed; only the
+    # fault-firing seed advances through the window [FAULT_OFFSET, SIMULATION_OFFSET). Take
+    # the FIRST offset where the fault actually fires AND the trajectory is long enough; if
+    # the whole window is exhausted without a firing, drop this seed (return empty).
+    fault_offset = FAULT_OFFSET
+    while True:
         trajectory_execution, faulty_actions_indices = execute(domain_name,
                                                                debug_print,
                                                                execution_fault_mode_name,
@@ -150,11 +152,13 @@ def single_experiment_prepare_inputs_non_determinstic(domain_name,
                                                                ml_model_name,
                                                                fault_mode_generator,
                                                                max_exec_len,
-                                                               fault_seed_offset=FAULT_OFFSET)
-        num_of_tries -= 1
-        if num_of_tries<=0:
-            print("creating trajectory failed after 50 tries")
-            return [],[],[],[],[]
+                                                               fault_seed_offset=fault_offset)
+        if len(faulty_actions_indices) > 0 and len(trajectory_execution) >= MIN_TRAJECTORY_LEN:
+            break
+        fault_offset += 1
+        if fault_offset >= SIMULATION_OFFSET:
+            print(f"fault never fired in {SIMULATION_OFFSET - FAULT_OFFSET} tries -> dropping seed")
+            return [], [], [], [], []
 
 
     # ### separating trajectory to actions and states

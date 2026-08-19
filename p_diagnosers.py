@@ -334,6 +334,7 @@ def simulate_m_traces(starting_state, observed_next_state, trace_length,
                       domain_name, trace_seed, rng,
                       simulator, model, debug_print)
 
+
         simulated_state_equals_observed = comparator(sim_next_state, observed_next_state)
 
         if simulated_state_equals_observed:
