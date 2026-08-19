@@ -67,7 +67,7 @@ Their engine is **adaptive Monte Carlo** (`simulate_m_traces_adaptive_monte_carl
 | `h_rl_models.py` | +115 (new) | `load_trained_model`, `FrozenLakeHardcodedPolicy` (JSON policies) |
 | `h_wrappers.py` | +80 | `TaxiV4SetStepWrapper`, `make_wrapped_env`, `DOMAIN_KWARGS` (slippery/rainy) |
 | `p_executor.py` | +13 | **seeded** per-instance RNG for reproducible fault injection |
-| `frozen_lake_random_envs*.py`, `train_taxi_v4_ppo.py`, `scripts/*` | new | env/policy generation, PPO training, analysis & plotting |
+| `frozen_lake_random_envs*.py`, `experiments_scripts/train_taxi_v4_ppo.py`, `scripts/*` | new | env/policy generation, PPO training, analysis & plotting |
 
 Story of the work (chronological): add Taxi-v4 stochastic support → move to Python 3.11 → debug the
 PO diagnoser → **add unknown-fault-rate** → tune adaptive-MC scaling → Taxi-v4 PPO training.
@@ -98,7 +98,7 @@ strong candidate for why Taxi-v4 is "untested / not behaving." Fix = rename/poin
 
 | # | Severity | Issue | Location |
 |---|----------|-------|----------|
-| 1 | High | Newly-trained Taxi-v4 rainy model is orphaned (no `.zip`); old model loads instead | `train_taxi_v4_ppo.py` save name vs `h_rl_models.py:117-118` |
+| 1 | High | Newly-trained Taxi-v4 rainy model is orphaned (no `.zip`); old model loads instead | `experiments_scripts/train_taxi_v4_ppo.py` save name vs `h_rl_models.py:117-118` |
 | 2 | Med | `main.py` parses `--epsilon/-ufr/-n` then **hard-overwrites** them (`args.epsilon=0.03`, etc.) → CLI is inert | `main.py:90-92` |
 | 3 | Med | Stochastic drivers hardcode a single map (`loaded[1]`), `fault_rate=0.5`, `epsilon=0.03`, rainy_prob=0.7 — not parameterized | `p_single_experiments.py` (stochastic drivers), `h_wrappers.py:169-170` |
 | 4 | Med | Legacy `SIFU*`/`W`/`SN` simulate without stochastic kwargs (see 4a) — fine today, a trap if reused for stochastic | `p_diagnosers.py:1020,1185,…` |

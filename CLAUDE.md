@@ -75,7 +75,10 @@ Weight these heavily; treat `master`-only code as background.
 - `h_wrappers.py`, `h_rl_models.py`, `h_state_refiners.py`, `h_raw_state_comparators.py` —
   env / fault / state plumbing.
 - `main.py` — entry point.
-- `train_taxi_v4_ppo.py`, `frozen_lake_random_envs*.py` — env setup / training.
+- `experiments_scripts/` — Taxi experiment & training scripts (`train_taxi_v4_ppo.py`,
+  `eval_taxi_policy.py`, `run_epsilon_sweep.py`, `hard_taxi_benchmark*.py`, `hard_taxi_data.py`,
+  `analyze_hard_instance.py`, `train_taxi.sbatch`); run from repo root. `frozen_lake_random_envs*.py`
+  — env setup / training.
 - `scripts/` — analysis & plotting (`explore_experiemnts.py`, `plot_experiments.py`,
   `fault_rate_comparsion.py`).
 
