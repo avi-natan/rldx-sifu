@@ -1,0 +1,5 @@
+config,model,success_line
+det,best_model,success@20 = 0/20   (rainy_probability=0.7, seeds 0..19)
+det,final_model,success@20 = 0/20   (rainy_probability=0.7, seeds 0..19)
+rainy_scratch,best_model,success@20 = 0/20   (rainy_probability=0.7, seeds 0..19)
+rainy_scratch,final_model,success@20 = 0/20   (rainy_probability=0.7, seeds 0..19)

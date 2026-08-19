@@ -1,0 +1,65 @@
+[15:35:38] building benchmark: up to 50 seeds/class (classes 2,3,4)...
+[15:35:43] built: class 2=50, class 3=50, class 4=50
+[15:35:43] PHASE A: 10/class x 3eps x 2vis x 5fr = 900 cells
+[15:41:53]   PhaseA(10/class): 60/900 cells, 369s elapsed
+[15:47:35]   PhaseA(10/class): 120/900 cells, 711s elapsed
+[15:53:16]   PhaseA(10/class): 180/900 cells, 1052s elapsed
+[15:59:03]   PhaseA(10/class): 240/900 cells, 1400s elapsed
+[16:04:26]   PhaseA(10/class): 300/900 cells, 1723s elapsed
+[16:10:59]   PhaseA(10/class): 360/900 cells, 2116s elapsed
+[16:16:34]   PhaseA(10/class): 420/900 cells, 2451s elapsed
+[16:22:40]   PhaseA(10/class): 480/900 cells, 2816s elapsed
+[16:27:27]   PhaseA(10/class): 540/900 cells, 3104s elapsed
+[16:33:39]   PhaseA(10/class): 600/900 cells, 3476s elapsed
+[16:38:42]   PhaseA(10/class): 660/900 cells, 3779s elapsed
+[16:45:58]   PhaseA(10/class): 720/900 cells, 4215s elapsed
+[16:52:14]   PhaseA(10/class): 780/900 cells, 4590s elapsed
+[16:59:17]   PhaseA(10/class): 840/900 cells, 5014s elapsed
+[17:04:19]   PhaseA(10/class): 900/900 cells, 5316s elapsed
+[17:04:19] PhaseA(10/class): 900 cells done in 5316s
+[17:04:19] 
+[17:04:19] === PHASE A (10/class): avg rank by (class, epsilon) [lower=better] ===
+[17:04:19]   class 2:  eps0.035=2.94(n100)  eps0.07=3.06(n100)  eps0.1=3.05(n100)
+[17:04:19]   class 3:  eps0.035=2.89(n100)  eps0.07=2.83(n100)  eps0.1=2.77(n100)
+[17:04:19]   class 4:  eps0.035=3.66(n100)  eps0.07=3.58(n100)  eps0.1=3.59(n100)
+[17:04:19] --- PHASE A (10/class): same, restricted to low fault rates (0.05, 0.02) (where eps matters) ---
+[17:04:19]   class 2:  eps0.035=3.02  eps0.07=3.23  eps0.1=3.23
+[17:04:19]   class 3:  eps0.035=3.40  eps0.07=3.58  eps0.1=3.52
+[17:04:19]   class 4:  eps0.035=4.08  eps0.07=4.15  eps0.1=4.17
+[17:04:19] PHASE B: +10/class -> 20/class
+[17:11:37]   PhaseB(+10): 60/900 cells, 437s elapsed
+[17:17:13]   PhaseB(+10): 120/900 cells, 774s elapsed
+[17:22:52]   PhaseB(+10): 180/900 cells, 1113s elapsed
+[17:29:16]   PhaseB(+10): 240/900 cells, 1497s elapsed
+[17:35:06]   PhaseB(+10): 300/900 cells, 1847s elapsed
+[17:41:25]   PhaseB(+10): 360/900 cells, 2226s elapsed
+[17:51:36]   PhaseB(+10): 420/900 cells, 2837s elapsed
+[17:56:12]   PhaseB(+10): 480/900 cells, 3112s elapsed
+[18:01:08]   PhaseB(+10): 540/900 cells, 3408s elapsed
+[18:05:19]   PhaseB(+10): 600/900 cells, 3660s elapsed
+[18:10:49]   PhaseB(+10): 660/900 cells, 3989s elapsed
+[18:16:25]   PhaseB(+10): 720/900 cells, 4326s elapsed
+[18:26:32]   PhaseB(+10): 780/900 cells, 4933s elapsed
+[18:31:27]   PhaseB(+10): 840/900 cells, 5227s elapsed
+[18:35:41] loaded 1747 existing cells
+[18:35:44]   finishB(class4->20): 60/600 cells, 0s elapsed
+[18:35:44]   finishB(class4->20): 120/600 cells, 0s elapsed
+[18:35:44]   finishB(class4->20): 180/600 cells, 0s elapsed
+[18:35:44]   finishB(class4->20): 240/600 cells, 0s elapsed
+[18:35:44]   finishB(class4->20): 300/600 cells, 0s elapsed
+[18:35:44]   finishB(class4->20): 360/600 cells, 0s elapsed
+[18:35:44]   finishB(class4->20): 420/600 cells, 0s elapsed
+[18:35:44]   finishB(class4->20): 480/600 cells, 0s elapsed
+[18:35:44]   finishB(class4->20): 540/600 cells, 0s elapsed
+[18:40:38]   finishB(class4->20): 600/600 cells, 294s elapsed
+[18:40:38] finishB(class4->20): 600 cells done in 294s
+[18:40:38] 
+[18:40:38] === PHASE A+B COMPLETE (20/class): avg rank by (class, epsilon) [lower=better] ===
+[18:40:38]   class 2:  eps0.035=3.33(n200)  eps0.07=3.35(n200)  eps0.1=3.39(n200)
+[18:40:38]   class 3:  eps0.035=3.07(n200)  eps0.07=3.02(n200)  eps0.1=3.02(n200)
+[18:40:38]   class 4:  eps0.035=3.57(n192)  eps0.07=3.58(n192)  eps0.1=3.60(n192)
+[18:40:38] --- PHASE A+B COMPLETE (20/class): same, restricted to low fault rates (0.05, 0.02) (where eps matters) ---
+[18:40:38]   class 2:  eps0.035=3.27  eps0.07=3.44  eps0.1=3.49
+[18:40:38]   class 3:  eps0.035=3.36  eps0.07=3.50  eps0.1=3.58
+[18:40:38]   class 4:  eps0.035=4.00  eps0.07=4.13  eps0.1=4.14
+[18:40:38] STOPPED before Phase C (per request).

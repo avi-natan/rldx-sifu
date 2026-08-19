@@ -11,3 +11,9 @@ logs/
 .claude/settings.local.json
 references/*.txt
 references/Ahmad Essa - Research Notes.pdf
+
+# Heavy trained-policy binaries (the good ones are committed under
+# environments/Taxi_v4/models/PPO/library/). Regenerable via experiments_scripts/train_taxi_v4_ppo.py.
+runs/taxi_v4/
+# Redundant local copy of the committed Taxi-v3/deterministic policy (== library/taxi_v4__deterministic_taxiv3_oldstrong).
+environments/Taxi_v4/models/PPO/Taxi_v4__PPO_deter.zip
