@@ -1,6 +1,11 @@
 import math
+import os as _os
 import random
+import sys as _sys
 from datetime import datetime, timedelta
+
+# hard_taxi_data lives under experiments_scripts/ — put it on sys.path so the import below resolves.
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "experiments_scripts"))
 
 import h_rl_models
 from frozen_lake_random_envs import load_pairs_from_json, print_map_and_policy

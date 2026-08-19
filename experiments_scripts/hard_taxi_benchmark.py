@@ -14,6 +14,9 @@ value = action that actually EXECUTES.
 
 import random
 
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # repo root on sys.path (deferred h_* imports; script lives in experiments_scripts/)
+
 NUM_ACTIONS = 6
 HEALTHY = [0, 1, 2, 3, 4, 5]
 ACTION_NAMES = {0: "DOWN", 1: "UP", 2: "RIGHT", 3: "LEFT", 4: "Pickup", 5: "Dropoff"}
