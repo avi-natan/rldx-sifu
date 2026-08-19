@@ -22,12 +22,13 @@ environments/Taxi_v4/models/PPO/ under a descriptive name only after evaluation
 (do NOT overwrite Taxi_v4__PPO.zip — it is gated, see references/TRAIN_TAXI_HANDOFF.md).
 
 Examples:
+  # (run from the repo root)
   # short local smoke run (just confirm the pipeline works)
-  python train_taxi_v4_ppo.py --timesteps 50000 --n_envs 4 --eval_freq 10000 --tag smoke
+  python experiments_scripts/train_taxi_v4_ppo.py --timesteps 50000 --n_envs 4 --eval_freq 10000 --tag smoke
   # a small probe with exploration on
-  python train_taxi_v4_ppo.py --timesteps 400000 --n_envs 8 --ent_coef 0.01
+  python experiments_scripts/train_taxi_v4_ppo.py --timesteps 400000 --n_envs 8 --ent_coef 0.01
   # curriculum step 2: fine-tune a deterministic-competent model on rain
-  python train_taxi_v4_ppo.py --init_from runs/taxi_v4/det/best_model.zip \
+  python experiments_scripts/train_taxi_v4_ppo.py --init_from runs/taxi_v4/det/best_model.zip \
       --rainy_probability 0.7 --timesteps 400000 --tag curriculum
 """
 import argparse

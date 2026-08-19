@@ -233,7 +233,7 @@ All under repo root `C:\Users\ahmad\Desktop\rldx_repo\rldx-sifu\`.
 ### 4.1 THE headline data — class-2 low-fault-rate study (`runs/class2_lowfr/`)
 Each CSV: columns `seed, a_star, eps, vis, fr, rank, dropped, total_tries`
 (`rank` blank + `dropped=1` when the fault never fired; `total_tries` = MC traces simulated).
-| File | Seeds | ε | Made by |
+| File | Seeds | ε | Made by (script removed 2026-08-19; CSV outputs kept) |
 |------|-------|----|---------|
 | `runs/class2_lowfr/cells_eps0.1.csv`  | first 40  | 0.10 | `run_class2_lowfr.py 0.1` |
 | `runs/class2_lowfr/cells_eps0.07.csv` | first 40  | 0.07 | `run_class2_lowfr.py 0.07` |
@@ -276,18 +276,28 @@ Each CSV: columns `seed, a_star, eps, vis, fr, rank, dropped, total_tries`
 ---
 
 ## 5. Scripts (the code that produced everything)
+
+Experiment scripts now live under **`experiments_scripts/`** — run them from the repo root
+(each has a `sys.path` bootstrap so its `p_*`/`h_*` imports resolve):
 | File | Role |
 |------|------|
-| `hard_taxi_benchmark.py` | **v1** generator (first experiments; most-used action, 5 steps → frozen). |
-| `hard_taxi_data.py` | **v1** frozen output: 100 instances (`BENCHMARK`) + pool/distractors/counts. |
+| `experiments_scripts/hard_taxi_benchmark_v2.py` | **v2** instance generator (`build_benchmark`, classes, candidates). |
+| `experiments_scripts/hard_taxi_benchmark.py` | **v1** generator (most-used action, 5 steps → frozen); v2 reuses its helpers. |
+| `experiments_scripts/hard_taxi_data.py` | **v1** frozen output: 100 instances (`BENCHMARK`) + pool/distractors/counts. Imported by `p_single_experiments.py` (via a sys.path shim). |
+| `experiments_scripts/run_epsilon_sweep.py` | Multi-class vis sweep (Phase A/B) — **the driver to adapt for the next run**. |
+| `experiments_scripts/eval_taxi_policy.py` | Deterministic success@N policy eval on the rainy env. |
+| `experiments_scripts/analyze_hard_instance.py` | Finds hard MC instances (near-twin distractors). |
+| `experiments_scripts/train_taxi_v4_ppo.py` | PPO trainer (reward shaping, vec envs, `--init_from`). |
+| `experiments_scripts/train_taxi.sbatch` | Cluster training job (calls the trainer + eval). |
 | `references/HARD_TAXI_SPEC.md` | v1 design spec. |
-| `hard_taxi_benchmark_v2.py` | **v2** instance generator (`build_benchmark`, classes, candidates). |
-| `run_class2_lowfr.py` | Runs first 40 class-2 seeds at one ε → `cells_eps<e>.csv`. |
-| `run_class2_more.py` | Runs next 100 class-2 seeds at one ε → `cells2_eps<e>.csv`. |
-| `run_epsilon_sweep.py` | Earlier multi-class vis{50,80} sweep (Phase A/B). |
-| `finish_phaseB.py` | Finished class-4 to 20/class for the sweep. |
-| `analyze_sweep.py` | Aggregates `runs/epsilon_sweep/cells.csv`. |
-| `deepdive.py` | Per-example MC effort + logL scores for the "small ε wins" cases. |
+
+**Removed in the 2026-08-19 cleanup** (one-offs; their `runs/` outputs remain):
+`run_class2_lowfr.py`, `run_class2_more.py`, `finish_phaseB.py`, `analyze_sweep.py`,
+`deepdive.py`, `run_hard_taxi_benchmark.py`.
+
+Core modules (repo root, unchanged):
+| File | Role |
+|------|------|
 | `p_pipeline.py` | `run_NON_DETERMINSTIC_single_experiment_PO` + firing-gate sweep. |
 | `p_diagnosers.py` | Stochastic PO diagnoser; adaptive MC; gap-decorrelated seeding. |
 | `p_executor.py` | `execute(..., fault_seed_offset=...)`. |

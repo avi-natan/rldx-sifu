@@ -30,7 +30,7 @@ echo "config,model,success_line" > "$RESULTS"
 run_and_eval () {
   name="$1"; shift
   echo "==================== TRAIN: $name ===================="
-  python -u train_taxi_v4_ppo.py --save_dir "$RUNS" --tag "$name" --n_envs 8 "$@"
+  python -u experiments_scripts/train_taxi_v4_ppo.py --save_dir "$RUNS" --tag "$name" --n_envs 8 "$@"
   for m in best_model final_model; do
     mp="$RUNS/$name/$m.zip"
     if [ -f "$mp" ]; then
