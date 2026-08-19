@@ -35,7 +35,7 @@ run_and_eval () {
     mp="$RUNS/$name/$m.zip"
     if [ -f "$mp" ]; then
       echo "-------- EVAL: $name/$m --------"
-      line=$(python -u eval_taxi_policy.py --model "$mp" --n_seeds 20 | grep "success@")
+      line=$(python -u experiments/eval_taxi_policy.py --model "$mp" --n_seeds 20 | grep "success@")
       echo "RESULT  $name  $m  ->  $line"
       echo "$name,$m,$line" >> "$RESULTS"
     fi

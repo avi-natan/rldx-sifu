@@ -208,7 +208,7 @@ def main():
 
     print(f"[train] saved final model to: {final_path}.zip")
     print(f"[train] best-by-eval model (if any) at: {os.path.join(run_dir, 'best_model.zip')}")
-    print(f"[train] evaluate with:  python eval_taxi_policy.py --model {final_path}.zip")
+    print(f"[train] evaluate with:  python experiments/eval_taxi_policy.py --model {final_path}.zip")
 
 
 if __name__ == "__main__":

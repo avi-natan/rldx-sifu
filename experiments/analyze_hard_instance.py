@@ -39,6 +39,9 @@ import random
 
 import gymnasium as gym
 
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # repo root on sys.path (script lives in experiments/)
+
 from p_diagnosers import execute_one_trace
 from h_fault_model_generator import FaultModelGeneratorDiscrete
 from h_rl_models import load_trained_model
