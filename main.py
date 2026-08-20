@@ -35,6 +35,7 @@ from p_single_experiments import (single_experiment_manual, \
                                   multiple_experiment_FrozenLake_NON_DETERMINSTIC_FO,
                                   multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO,
                                   multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO,
+                                  multiple_experiment_Taxi_v4_hard_class2_PO,
                                   single_experiment_stochastic_Taxi_v4, single_experiment_stochastic_FrozenLake)
 
 
@@ -97,7 +98,7 @@ if __name__ == '__main__':
         print(f"unknown_fault_rate={args.unknown_fault_rate}")
         print(f"maps_num={args.maps_num}")
 
-        args.epsilon = 0.03
+        # epsilon comes from --epsilon (one value per run -> one xlsx); no longer hard-set here.
         args.unknown_fault_rate = False
         args.maps_num = 49
 
@@ -119,7 +120,17 @@ if __name__ == '__main__':
         # )
 
         #single_experiment_stochastic_FrozenLake(run_folder=args.run_folder)
-        single_experiment_stochastic_Taxi_v4(run_folder=args.run_folder)
+        # single_experiment_stochastic_Taxi_v4(run_folder=args.run_folder)
+
+        # === HARD class-2 epsilon experiment (fixed fr=0.3, visibility sweep 20..100) ===
+        # One epsilon per run -> one xlsx. Full sweep = run once per --epsilon value in
+        # {0.1, 0.07, 0.05, 0.04, 0.03, 0.02} (locally, or a 6-task SLURM array).
+        # Use a small num_seeds for a smoke run.
+        multiple_experiment_Taxi_v4_hard_class2_PO(
+            epsilon=args.epsilon,
+            num_seeds=100,
+            run_folder=args.run_folder,
+        )
 
 
         # single_experiment_FrozenLake_NON_DETERMINSTIC()

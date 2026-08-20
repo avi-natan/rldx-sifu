@@ -32,7 +32,7 @@ _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)
 from h_consts import SEED_BLOCK
 from h_wrappers import make_wrapped_env
 from h_rl_models import load_trained_model
-from hard_taxi_benchmark import NUM_ACTIONS, HEALTHY, ACTION_NAMES, map_to_str, describe_fault
+from hard_taxi_benchmark import NUM_ACTIONS, HEALTHY, map_to_str
 
 CLASSES = (2, 3, 4)   # class 1 (least-used = Pickup/Dropoff, re-converges -> impossible) dropped
 
@@ -174,72 +174,3 @@ def build_benchmark(seeds_per_class=50, seed_start=1, max_steps=200, verbose=Tru
         if verbose:
             print(f"class {class_id}: {collected} instances (scanned up to seed {seed - 1})")
     return benchmark
-
-
-# ---------------------------------------------------------------------------------------
-# Runner: diagnose n_per_class instances across visibility x fault_rate
-# ---------------------------------------------------------------------------------------
-def run_benchmark(benchmark, n_per_class,
-                  visibilities=(50, 80),
-                  fault_rates=(0.3, 0.2, 0.1, 0.05, 0.02),
-                  epsilon=0.2, unknown_fault_rate=False, debug_print=False):
-    """Run the PO diagnoser over the first n_per_class instances of each class, sweeping
-    visibility x fault_rate. Returns a list of per-cell result dicts."""
-    from p_pipeline import run_NON_DETERMINSTIC_single_experiment_PO
-
-    by_class = {c: [] for c in CLASSES}
-    for inst in benchmark:
-        by_class[inst[2]].append(inst)
-
-    results = []
-    for class_id in CLASSES:
-        for main_seed, base, _cid, a_star, E_str, cands in by_class[class_id][:n_per_class]:
-            for vis in visibilities:
-                for fr in fault_rates:
-                    out = run_NON_DETERMINSTIC_single_experiment_PO(
-                        domain_name="Taxi_v4", ml_model_name="PPO", render_mode="rgb_array",
-                        max_exec_len=200, debug_print=debug_print,
-                        execution_fault_mode_name=E_str, instance_seed=base,
-                        fault_probability=fr, percent_visible_states=vis,
-                        possible_fault_mode_names=cands, num_candidate_fault_modes=10,
-                        epsilon=epsilon, unknown_fault_rate=unknown_fault_rate,
-                        fault_rate_candidates=None, fixed_candidate_fault_modes=cands)
-                    results.append({
-                        "class": class_id, "main_seed": main_seed, "a_star": a_star,
-                        "vis": vis, "fault_rate": fr,
-                        "rank": (out.get("real_fault_rank") if out else None),
-                        "dropped": out is None,
-                    })
-    return results
-
-
-if __name__ == "__main__":
-    import sys
-    n = int(sys.argv[1]) if len(sys.argv) > 1 else 2     # seeds per class for the test
-
-    print(f"=== building benchmark: {n} seeds/class ===")
-    bench = build_benchmark(seeds_per_class=n)
-    print(f"built {len(bench)} instances\n")
-    for main_seed, base, cid, a_star, E_str, cands in bench:
-        print(f"  class {cid} seed {main_seed:<4} a*={ACTION_NAMES[a_star]:<7} "
-              f"E={E_str:<16} ({describe_fault([int(x) for x in E_str[1:-1].split(',')])})")
-
-    print(f"\n=== running: {n} seeds/class x vis{{50,80}} x fr{{0.3,0.2,0.1,0.05,0.02}} ===")
-    res = run_benchmark(bench, n_per_class=n)
-
-    # summary: avg rank per class, and per (class, fault_rate)
-    print("\n--- avg rank by class (lower=better; None=dropped) ---")
-    for c in CLASSES:
-        rows = [r for r in res if r["class"] == c and r["rank"] is not None]
-        dropped = sum(1 for r in res if r["class"] == c and r["dropped"])
-        avg = (sum(r["rank"] for r in rows) / len(rows)) if rows else float("nan")
-        print(f"  class {c}: avg_rank={avg:.2f} over {len(rows)} cells  (dropped {dropped})")
-
-    print("\n--- avg rank by (class, fault_rate) ---")
-    for c in CLASSES:
-        line = [f"class {c}:"]
-        for fr in (0.3, 0.2, 0.1, 0.05, 0.02):
-            rows = [r for r in res if r["class"] == c and r["fault_rate"] == fr and r["rank"] is not None]
-            avg = (sum(r["rank"] for r in rows) / len(rows)) if rows else float("nan")
-            line.append(f"fr{fr}={avg:.2f}")
-        print("  " + "  ".join(line))

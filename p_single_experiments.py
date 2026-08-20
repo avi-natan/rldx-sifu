@@ -13,6 +13,7 @@ from h_consts import SEED_BLOCK
 from h_fault_model_generator import FaultModelGeneratorDiscrete
 from h_wrappers import DOMAIN_KWARGS
 from hard_taxi_data import benchmark_seeds, get_instance
+from hard_taxi_benchmark_v2 import build_benchmark
 from p_diagnosers import diagnosers
 from p_executor import execute_manual
 from p_pipeline import run_SIF_single_experiment, run_SN_single_experiment, run_W_single_experiment, \
@@ -1294,6 +1295,103 @@ def multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_
     file_suffix = str(epsilon).replace(".", "_")
     method_suffix = "UN_known_fr" if unknown_fault_rate else "known_fr"
     file_path = f"taxi_v4_non_deterministic_PO_{method_suffix}_epsilon_{file_suffix}_SEEDS_{num_seeds}"
+
+    output_dir = domain_results_dir(domain_name, run_folder)
+    exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)
+    print(f"file was written at: {output_dir}/{file_path}.xlsx")
+
+
+def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_folder=None):
+    """Taxi-v4 HARD class-2 epsilon experiment (the "second experiment").
+
+    Mirrors multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO, but the instances come from
+    the v2 hard benchmark (hard_taxi_benchmark_v2.build_benchmark, CLASS 2 = least-used
+    commanded action a* with count >= 2) instead of the frozen v1 data, and the fault rate
+    is FIXED at 0.3 (only visibility is swept). Each instance is
+    (main_seed, base, class, a*, execution_fault E, [10 candidate maps]).
+
+    One epsilon per call -> one xlsx (cluster-array friendly: run once per epsilon value).
+    Trajectory creation can fail when the fault never fires -> we skip and count those.
+    """
+    records = []
+    skipped = 0
+
+    domain_name = "Taxi_v4"
+    ml_model_name = "PPO"
+    render_mode = "rgb_array"
+    max_exec_len = 200
+    debug_print = False
+    num_candidate_fault_modes = 10
+
+    fault_rate_list = [0.3]                              # FIXED
+    percent_visible_states_list = [20, 40, 60, 80, 100]
+
+    # Build the first num_seeds CLASS-2 instances (least-used a*, count >= 2).
+    bench = build_benchmark(seeds_per_class=num_seeds, classes=(2,), verbose=False)
+    instances = [inst for inst in bench if inst[2] == 2][:num_seeds]
+
+    print(f"Running Taxi-v4 PO diagnosis (HARD class-2) | epsilon={epsilon} | "
+          f"num_seeds={len(instances)} | fault_rate={fault_rate_list} | "
+          f"visibility={percent_visible_states_list}\n\n")
+
+    for i, (main_seed, base, _cid, a_star, execution_fault_mode_name, candidate_fault_modes) in enumerate(instances):
+        now = datetime.now()
+        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+        print(f'================= {dt_string}: SEED {main_seed} ({i+1}/{len(instances)}), '
+              f'a*={a_star} fault={execution_fault_mode_name} START =================')
+
+        for percent_visible_states in percent_visible_states_list:
+            for fault_rate in fault_rate_list:
+                print(f'===== SEED {main_seed} | FR={fault_rate} | VR={percent_visible_states} =====')
+
+                output = run_NON_DETERMINSTIC_single_experiment_PO(
+                    domain_name=domain_name,
+                    ml_model_name=ml_model_name,
+                    render_mode=render_mode,
+                    max_exec_len=max_exec_len,
+                    debug_print=debug_print,
+                    execution_fault_mode_name=execution_fault_mode_name,
+                    instance_seed=base,  # build_benchmark already returns base = main_seed * SEED_BLOCK
+                    fault_probability=fault_rate,
+                    percent_visible_states=percent_visible_states,
+                    possible_fault_mode_names=candidate_fault_modes,
+                    num_candidate_fault_modes=num_candidate_fault_modes,
+                    epsilon=epsilon,
+                    unknown_fault_rate=False,
+                    fault_rate_candidates=None,
+                    fixed_candidate_fault_modes=candidate_fault_modes)
+
+                if not output:
+                    skipped += 1
+                    continue
+
+                output["epsilon"] = epsilon
+                output["experiment_num"] = i + 1
+                output["real_fault_prob"] = fault_rate
+                output["map_desc"] = f"seed_{main_seed}"
+                output["a_star"] = a_star
+                output["hardcoded_policy"] = f"{domain_name}_{ml_model_name}"
+                output["domain_name"] = domain_name
+
+                records.append(output)
+
+        dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        print(f'================= {dt_string}: SEED {main_seed} END =================')
+
+    if not records:
+        print("No successful Taxi experiments produced (all trajectories failed).")
+        return
+
+    total_diagnosis_time_sec = sum(r["diagnosis_time_sec"] for r in records)
+    avg_diagnosis_time_sec = total_diagnosis_time_sec / len(records)
+    print(f"\nNumber of diagnosis runs: {len(records)} (skipped {skipped})")
+    print(f"Total diagnosis time: {timedelta(seconds=int(total_diagnosis_time_sec))} "
+          f"({total_diagnosis_time_sec:.2f} sec)")
+    print(f"Average diagnosis time: {timedelta(seconds=int(avg_diagnosis_time_sec))} "
+          f"({avg_diagnosis_time_sec:.2f} sec)")
+
+    file_suffix = str(epsilon).replace(".", "_")
+    file_path = f"taxi_v4_hard_class2_PO_known_fr_epsilon_{file_suffix}_SEEDS_{num_seeds}"
 
     output_dir = domain_results_dir(domain_name, run_folder)
     exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)
