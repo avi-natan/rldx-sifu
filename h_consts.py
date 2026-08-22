@@ -2,7 +2,7 @@ EPISODES = 1
 SEED = 42
 DETERMINISTIC = True
 
-SEED_BLOCK = 1_000_000
+SEED_BLOCK = 10_000_000   # per-instance seed block; must exceed (max_tries+50)*MAX_STATES for the MC seeds
 WINDOW_SIZE = 1000
 TRAJECTORY_OFFSET = 0
 CANDIDATE_OFFSET = 1
