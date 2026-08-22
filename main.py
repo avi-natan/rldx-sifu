@@ -39,6 +39,20 @@ from p_single_experiments import (single_experiment_manual, \
                                   single_experiment_stochastic_Taxi_v4, single_experiment_stochastic_FrozenLake)
 
 
+def play_done_alarm():
+    """Play the end-of-run chime, but never let audio problems affect the exit code.
+    Headless compute nodes have no audio device, so mixer.init() raises there; we must
+    not let that turn a successful experiment into a FAILED job."""
+    try:
+        mixer.init()
+        mixer.music.load('alarm.mp3')
+        mixer.music.play()
+        while mixer.music.get_busy():  # wait for music to finish playing
+            time.sleep(1)
+    except Exception as e:
+        print(f"(alarm skipped: {e})")
+
+
 if __name__ == '__main__':
 
     import argparse
@@ -137,12 +151,7 @@ if __name__ == '__main__':
         # single_experiment_FrozenLake_SIF()
         # multiple_experiments_FrozenLake_SIF()
         print(f'finished gracefully1')
-        mixer.init()
-        mixer.music.load('alarm.mp3')
-        mixer.music.play()
-
-        while mixer.music.get_busy():  # wait for music to finish playing
-            time.sleep(1)
+        play_done_alarm()
 
         exit(0)
 
@@ -197,17 +206,9 @@ if __name__ == '__main__':
         run_experimental_setup_new(arguments=sys.argv, render_mode=render_mode, debug_print=debug_print)
 
         print(f'finisehd gracefully')
-        mixer.init()
-        mixer.music.load('alarm.mp3')
-        mixer.music.play()
-        while mixer.music.get_busy():  # wait for music to finish playing
-            time.sleep(1)
+        play_done_alarm()
     except ValueError as e:
         print(f'Value error: {e}')
-        mixer.init()
-        mixer.music.load('alarm.mp3')
-        mixer.music.play()
-        while mixer.music.get_busy():  # wait for music to finish playing
-            time.sleep(1)
+        play_done_alarm()
 
     print(9)
