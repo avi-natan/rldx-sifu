@@ -1,0 +1,150 @@
+================================================================================
+ TAXI-V4 HARD CLASS-2 EPSILON-SWEEP EXPERIMENT - INPUT DESCRIPTION
+================================================================================
+ Every input that defines this experiment. Results in this folder are 6 Excel
+ files (one per epsilon) + logs/ (one .out per array task).
+
+ Produced by : experiments driver multiple_experiment_Taxi_v4_hard_class2_PO
+               (p_single_experiments.py), launched via main.py --epsilon <E>
+ Diagnoser   : fault_identification_non_deterministic_PO  (p_diagnosers.py)
+ Code commit : d1dcbd6  ("Fix MC seed-block overflow: SEED_BLOCK 1M -> 10M")
+ Run on      : BGU Slurm cluster, 6-task arrays (fast eps + slow eps), CPU partition
+
+--------------------------------------------------------------------------------
+1. ENVIRONMENT INPUTS
+--------------------------------------------------------------------------------
+  domain_name          : Taxi_v4   (Gymnasium Taxi, custom stochastic variant)
+  is_rainy             : True
+  rainy_probability    : 0.7   -> a commanded MOVE executes as intended w.p. 0.70,
+                                   and slips to EACH perpendicular direction w.p. 0.15.
+                                   (PICKUP / DROPOFF are deterministic, no slip.)
+  fickle_passenger     : False
+  render_mode          : rgb_array
+  max_exec_len         : 200   (max trajectory length before truncation)
+
+  Actions (fixed by Gymnasium):
+     0 = DOWN (South)   1 = UP (North)   2 = RIGHT (East)   3 = LEFT (West)
+     4 = PICKUP         5 = DROPOFF
+  State encoding: a state id in [0,500) decodes to
+     (taxi_row 0-4, taxi_col 0-4, passenger_location, destination).
+     passenger_location: 0=R 1=G 2=Y 3=B 4=IN-TAXI ; destination: 0=R 1=G 2=Y 3=B.
+     Depots: R=(0,0) G=(0,4) Y=(4,0) B=(4,3).
+  The 5x5 grid/walls are fixed; only the START state (taxi/passenger/destination)
+  varies per seed.
+
+--------------------------------------------------------------------------------
+2. POLICY INPUT
+--------------------------------------------------------------------------------
+  ml_model_name        : PPO
+  policy served as     : TaxiHardcodedPolicy - a precomputed 500-state lookup table
+                         (deterministic action per state), tabulated once from
+                         environments/Taxi_v4/models/PPO/Taxi_v4__PPO.zip.
+  policy origin        : PPO trained on the rainy-0.7 env (promoted "shaped_rainy_s2/final").
+  Why a table: identical behaviour to model.predict(deterministic=True) but far
+  faster for Monte-Carlo, which queries the policy on every simulated step.
+
+--------------------------------------------------------------------------------
+3. INSTANCE (BENCHMARK) GENERATION INPUTS   (hard_taxi_benchmark_v2.build_benchmark)
+--------------------------------------------------------------------------------
+  Each instance = (seed, execution_fault E, 10 candidate fault modes), built as:
+
+  num_seeds            : 100   (the first 100 valid CLASS-2 seeds, scanned upward)
+  instance class       : 2  = the faulted action a* is the LEAST-USED commanded
+                         action with command-count >= 2 in a healthy rollout from
+                         the seed (the hardest realistic case; rarely-fired fault).
+  profiling            : one HEALTHY policy rollout per seed (at the seed's env
+                         reset) counts how often each action is commanded -> picks a*.
+  b (twin axis)        : the 2nd-rarest commanded action != a* (used for tier-2 twins).
+
+  execution fault E    : corrupts ONLY a* -> a RANDOM other action (seeded per seed).
+                         Format: a 6-int map [pos i -> executed action]; healthy=[0,1,2,3,4,5].
+                         Example "[1,1,2,3,4,5]" = commanded DOWN executes as UP.
+
+  candidate fault modes (10, E listed first, all distinct):
+     - 6 maps of a*  : E + the 5 other targets of a* (a* -> 0,1,2,3,4,5). These
+                       differ from each other ONLY in what a* does.
+     - 4 tier-2 twins: keep E's a* mapping, additionally corrupt b to 4 distinct
+                       other actions (harder distractors).
+  num_candidate_fault_modes : 10   (fixed_candidate_fault_modes = this frozen list)
+
+--------------------------------------------------------------------------------
+4. DIAGNOSIS / RUN INPUTS
+--------------------------------------------------------------------------------
+  fault_probability (fault rate) : 0.3   FIXED  (per-step probability the fault
+                                   fires when a* is commanded during execution)
+  percent_visible_states         : swept over {20, 40, 60, 80, 100}
+                                   (fraction of trajectory states the diagnoser sees;
+                                    the FIRST and LAST states are ALWAYS observed,
+                                    the % applies to the interior states, chosen by a
+                                    seeded random mask.)
+  epsilon (MC confidence thresh) : ONE value per run/file, swept over
+                                   {0.1, 0.07, 0.05, 0.04, 0.03, 0.02}
+                                   (smaller epsilon -> tighter confidence -> more
+                                    Monte-Carlo simulations.)
+  unknown_fault_rate             : False  (KNOWN fault rate; the 0.3 is given to the
+                                   diagnoser, not estimated)
+  fault_rate_candidates          : None   (unused when fault rate is known)
+
+  Firing gate (input prep): a seed's trajectory is (re)generated with advancing
+  fault-firing seeds until the fault actually FIRES at least once AND the trajectory
+  is long enough (>= 25 steps for Taxi); seeds where it never fires are dropped.
+
+  Diagnoser engine (adaptive Monte-Carlo, per hidden gap between two observed states):
+     min_tries  = 100 + 10 * gap_length
+     scale      = max(1, (0.025 / epsilon)^2)
+     max_tries  = 2500*scale + 150*gap_length*scale
+     stop when the 95% CI half-width 1.96*sqrt(p_hat(1-p_hat)/n) < epsilon, else max_tries.
+     A candidate's score = sum of log(p_hat) over gaps; faults ranked by total log-likelihood.
+
+--------------------------------------------------------------------------------
+5. SEEDING SCHEME   (h_consts.py; deterministic & reproducible)
+--------------------------------------------------------------------------------
+  instance_seed (block base) = main_seed * SEED_BLOCK,  SEED_BLOCK = 10,000,000
+  Per-instance sub-streams (offsets into the block, kept disjoint):
+     trajectory / env reset : base + 0
+     candidate shuffle      : base + 1
+     observation mask       : base + 2
+     fault-firing sweep     : base + 3, 4, 5, ...   (firing gate advances this)
+     MC simulation seeds    : base + 5000 ...        (SIMULATION_OFFSET)
+  MAX_STATES = 200  (per-trace seed stride; SEED_BLOCK must exceed
+                     (max_tries+50)*MAX_STATES, which is why it was raised to 10M.)
+
+--------------------------------------------------------------------------------
+6. WHAT VARIES vs WHAT IS FIXED
+--------------------------------------------------------------------------------
+  VARIES : epsilon (across the 6 files) ; percent_visible_states (5 values within
+           each file) ; seed (100 instances within each file).
+  FIXED  : domain, rainy_probability=0.7, policy, class=2, fault_rate=0.3,
+           num_candidate_fault_modes=10, num_seeds=100, known fault rate.
+  -> Total cells per file = 100 seeds x 5 visibilities = 500 rows.
+
+--------------------------------------------------------------------------------
+7. FILE -> EPSILON MAP
+--------------------------------------------------------------------------------
+  taxi_v4_hard_class2_PO_known_fr_epsilon_0_1_SEEDS_100.xlsx   -> epsilon 0.10
+  taxi_v4_hard_class2_PO_known_fr_epsilon_0_07_SEEDS_100.xlsx  -> epsilon 0.07
+  taxi_v4_hard_class2_PO_known_fr_epsilon_0_05_SEEDS_100.xlsx  -> epsilon 0.05
+  taxi_v4_hard_class2_PO_known_fr_epsilon_0_04_SEEDS_100.xlsx  -> epsilon 0.04
+  taxi_v4_hard_class2_PO_known_fr_epsilon_0_03_SEEDS_100.xlsx  -> epsilon 0.03
+  taxi_v4_hard_class2_PO_known_fr_epsilon_0_02_SEEDS_100.xlsx  -> epsilon 0.02
+  logs/rldx_c2eps_fast-20476121_{0..3}.out  = eps 0.1,0.07,0.05,0.04 (array tasks)
+  logs/rldx_c2eps_slow-20476122_{0,1}.out   = eps 0.03,0.02
+  (Job status shows FAILED only due to a headless end-of-run audio call; every
+   result file is complete - 500 rows, 100 seeds, all 5 visibilities.)
+
+--------------------------------------------------------------------------------
+8. OUTPUT (each .xlsx) - KEY COLUMNS
+--------------------------------------------------------------------------------
+  map_desc                 = seed_<n>            percent_visible_states = visibility %
+  epsilon                  = MC threshold        real_fault_prob        = fault rate (0.3)
+  a_star                   = faulted action id   real_fault_rank        = rank of TRUE fault (1=best)
+  execution_fault_in_top1/2/3 = was true fault in top-1/2/3
+  top_fault_key            = diagnoser's #1 guess
+  top_minus_real_score_gap = logL(winner) - logL(true fault); 0 => true fault won
+  largest_gap / num_gaps   = longest / count of hidden-state gaps
+  num_observed_states / observations_len = visible / total states
+  faulty_actions_indices_len = how many times the fault fired
+  adaptive_total_real_tries  = total Monte-Carlo simulations (compute cost)
+  adaptive_max_stops / adaptive_max_stop_rate = # / frac of gaps that hit the try cap
+
+================================================================================
