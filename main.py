@@ -124,7 +124,7 @@ if __name__ == '__main__':
         args.maps_num = 49
 
 
-        """
+        """        
         multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(
             epsilon=args.epsilon,
             unknown_fault_rate=args.unknown_fault_rate,
@@ -150,9 +150,9 @@ if __name__ == '__main__':
             multiple_experiment_FrozenLake_fault_benchmark(
                 epsilon=args.epsilon,
                 way=args.fl_way,
-                num_maps=100,
+                unknown_fault_rate=args.unknown_fault_rate,
+                maps_num=100,
                 run_folder=args.run_folder,
-                fault_rate=0.5,
             )
         else:
             # Known-rate: default. Unknown-rate: pass -ufr on the CLI (10x more MC sims, ~10x slower).

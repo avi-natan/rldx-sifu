@@ -1415,103 +1415,159 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
 
 
 
-def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, way=2, num_maps=100,
-                                                   run_folder=None, fault_rate=0.5):
-    """FrozenLake fault-diagnosis benchmark, KNOWN fault rate, one epsilon per call -> one xlsx.
+def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, way=2, unknown_fault_rate=False, maps_num=100, run_folder=None):
 
-    Two candidate-construction schemes (see frozen_lake_fault_modes.py):
-      way=1  Taxi-style: rare a* + near-twins (deliberately hard/ambiguous).
-      way=2  distinguishable: most-used a* + redirects of the 3 most-used actions
-             (solvable at full obs; hardness comes from the visibility sweep).
-
-    Per map: profile the healthy policy (one slippery rollout at the instance seed) to get
-    command counts, build a* + 10 candidates for the chosen way, then diagnose over the
-    visibility sweep at fixed known fault_rate. Uses the pipeline's firing gate.
-    """
+    global HARD_CODED_POLICY
     from collections import Counter
     from p_executor import execute
     from h_fault_model_generator import FaultModelGeneratorDiscrete
     from frozen_lake_fault_modes import BUILDERS
 
-    build = BUILDERS[way]
-    way_token = f"way{way}"
-    domain_name = "FrozenLake_v1"
-    ml_model_name = "PPO"
-    render_mode = "rgb_array"
-    max_exec_len = 200
-    debug_print = False
-    percent_visible_states_list = [20, 40, 60, 80, 100]
-
     loaded = load_pairs_from_json("frozenlake_maps_8x8_slippery.json")
-    num_maps = min(num_maps, len(loaded))
-    fmg = FaultModelGeneratorDiscrete()
-
-    print(f"Running FrozenLake fault benchmark ({way_token}, KNOWN fr) | epsilon={epsilon} | "
-          f"num_maps={num_maps} | fault_rate={fault_rate} | visibility={percent_visible_states_list}\n\n")
-
+    diagnosis_runtimes_ms = []
     records = []
-    skipped = 0
-    for i in range(num_maps):
-        map_desc, policy = loaded[i]
+
+    if unknown_fault_rate:
+        fault_rate_candidates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        fault_rate_candidates = [0.1, 0.3, 0.5, 0.7, 0.8]
+    else:
+        fault_rate_candidates = None
+
+
+
+    NUM_MAPS = maps_num
+    build = BUILDERS[way]                 # way 1 = Taxi-style / way 2 = distinguishable
+    fault_mode_generator = FaultModelGeneratorDiscrete()
+
+    msg = (
+        f"Running PO diagnosis (fault benchmark way{way}) | "
+        f"epsilon={epsilon} | "
+        f"unknown_fault_rate={unknown_fault_rate} | "
+        f"num_maps={NUM_MAPS}"
+    )
+
+    if fault_rate_candidates is not None:
+        msg += f" | fault_rate_candidates={fault_rate_candidates}"
+
+    print(msg+ "\n\n")
+
+    for i in range(NUM_MAPS):
+
+        map_desc, hardcoded_policy = loaded[i]
         DOMAIN_KWARGS["FrozenLake_v1"]["desc"] = map_desc
         DOMAIN_KWARGS["FrozenLake_v1"]["is_slippery"] = True
-        h_rl_models.HARD_CODED_POLICY = policy
-        base = (10 + i) * SEED_BLOCK
+        h_rl_models.HARD_CODED_POLICY = hardcoded_policy
+        now = datetime.now()
+        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+        print(f'================================= {dt_string}: MAP {i+1}/{NUM_MAPS} START =================================')
 
-        # profile the healthy policy at the instance seed -> command counts -> a* + candidates
-        healthy_traj, _ = execute(domain_name, False, "[0,1,2,3]", base, 0.0, render_mode,
-                                  ml_model_name, fmg, max_exec_len, fault_seed_offset=0)
-        counts = Counter(int(a) for a in healthy_traj[1::2])
-        a_star, e_target, E_str, candidates = build(counts, seed=10 + i)
+        domain_name = "FrozenLake_v1"
+        ml_model_name = "PPO"                         # "PPO", "DQN"
+        render_mode = "rgb_array"                     # "human", "rgb_array"
+        max_exec_len = 200
+        debug_print = True
 
-        dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        print(f'================= {dt_string}: {way_token} MAP {i+1}/{num_maps} '
-              f'a*={a_star} fault={E_str} START =================')
+        instance_seed = 10+i
+        num_candidate_fault_modes = 10
+
+        # execution fault + 10 candidate fault modes come from the chosen benchmark way:
+        # profile the healthy policy at the instance seed -> command counts -> a* + candidates.
+        healthy_trajectory, _ = execute(domain_name, False, "[0,1,2,3]", instance_seed * SEED_BLOCK, 0.0,
+                                        render_mode, ml_model_name, fault_mode_generator, max_exec_len, fault_seed_offset=0)
+        counts = Counter(int(a) for a in healthy_trajectory[1::2])
+        a_star, e_target, execution_fault_mode_name, possible_fault_mode_names = build(counts, seed=instance_seed)
+
+        # 1.0 mean Non-intermittent fault - faults always occur
+        fault_rate_list = [0.5, 0.8]
+        percent_visible_states_list = [20, 40, 60, 80, 100]
 
         for percent_visible_states in percent_visible_states_list:
-            print(f'===== {way_token} MAP {i+1} | FR={fault_rate} | VR={percent_visible_states} =====')
-            output = run_NON_DETERMINSTIC_single_experiment_PO(
-                domain_name=domain_name,
-                ml_model_name=ml_model_name,
-                render_mode=render_mode,
-                max_exec_len=max_exec_len,
-                debug_print=debug_print,
-                execution_fault_mode_name=E_str,
-                instance_seed=base,
-                fault_probability=fault_rate,
-                percent_visible_states=percent_visible_states,
-                possible_fault_mode_names=candidates,
-                num_candidate_fault_modes=len(candidates),
-                unknown_fault_rate=False,
-                fault_rate_candidates=None,
-                epsilon=epsilon,
-                fixed_candidate_fault_modes=candidates)
+            for fault_rate in fault_rate_list:
 
-            if not output:
-                skipped += 1
-                continue
+                print(f'======================= START SINGLE EXPERIMENT MAP {i + 1}/{NUM_MAPS} with FR={fault_rate}, VR={percent_visible_states} =======================')
 
-            output["epsilon"] = epsilon
-            output["experiment_num"] = i + 1
-            output["real_fault_prob"] = fault_rate
-            output["map_desc"] = f"map_{i}"
-            output["a_star"] = a_star
-            output["benchmark_way"] = way_token
-            output["execution_fault"] = E_str
-            output["hardcoded_policy"] = f"{domain_name}_{ml_model_name}"
-            output["domain_name"] = domain_name
-            records.append(output)
+                output = run_NON_DETERMINSTIC_single_experiment_PO( domain_name=domain_name,
+                                                                 ml_model_name=ml_model_name,
+                                                                 render_mode=render_mode,
+                                                                 max_exec_len=max_exec_len,
+                                                                 debug_print=debug_print,
+                                                                 execution_fault_mode_name=execution_fault_mode_name,
+                                                                 instance_seed=instance_seed * SEED_BLOCK,  # pass the block base; run_PO derives all offsets
+                                                                 fault_probability=fault_rate,
+                                                                 percent_visible_states=percent_visible_states,
+                                                                 possible_fault_mode_names=possible_fault_mode_names,
+                                                                 num_candidate_fault_modes=num_candidate_fault_modes,
+                                                                 epsilon = epsilon,
+                                                                 unknown_fault_rate=unknown_fault_rate,
+                                                                 fault_rate_candidates=fault_rate_candidates,
+                                                                 fixed_candidate_fault_modes=possible_fault_mode_names)
+                if not output:
+                    continue
 
-    if not records:
-        print("No successful FrozenLake experiments produced.")
-        return
+                output["epsilon"] = epsilon
+                output["experiment_num"] = i + 1
+                output["real_fault_prob"] = fault_rate
+                output["map_desc"] = map_desc
+                output["hardcoded_policy"] = hardcoded_policy
+                output["domain_name"] = domain_name
+                output["benchmark_way"] = f"way{way}"
+                output["a_star"] = a_star
+                output["execution_fault"] = execution_fault_mode_name
 
-    print(f"\nNumber of diagnosis runs: {len(records)} (skipped {skipped})")
+                records.append(output)
+
+
+                print(f'=========================== END SINGLE EXPERIMENT MAP {i + 1}/{NUM_MAPS} with FR={fault_rate}, VR{percent_visible_states} ===========================')
+
+        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+        print(f'======================================= {dt_string}: MAP {i+1}/{NUM_MAPS} END =======================================')
+
+
+    from datetime import timedelta
+
+    total_diagnosis_time_sec = sum(
+        r["diagnosis_time_sec"]
+        for r in records
+    )
+
+    avg_diagnosis_time_sec = (
+            total_diagnosis_time_sec / len(records)
+    )
+
+    print(f"\nNumber of diagnosis runs: {len(records)}")
+
+    # timedelta prints 5:42:17 -> 5h, 42 min, 17 sec
+    print(
+        f"Total diagnosis time: "
+        f"{timedelta(seconds=int(total_diagnosis_time_sec))} "
+        f"({total_diagnosis_time_sec:.2f} sec)"
+    )
+
+    print(
+        f"Average diagnosis time: "
+        f"{timedelta(seconds=int(avg_diagnosis_time_sec))} "
+        f"({avg_diagnosis_time_sec:.2f} sec)"
+    )
+
     file_suffix = str(epsilon).replace(".", "_")
-    file_path = f"frozenlake_{way_token}_PO_known_fr_epsilon_{file_suffix}_MAPS_{num_maps}"
-    output_dir = domain_results_dir(domain_name, run_folder)
-    exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)
+
+    if unknown_fault_rate:
+        method_suffix = "UN_known_fr"
+    else:
+        method_suffix = "known_fr"
+
+    file_path = f"frozenlake_way{way}_PO_{method_suffix}_epsilon_{file_suffix}_MAPS_{maps_num}"
+
+    output_dir = domain_results_dir("FrozenLake_v1", run_folder)
+    exper_write_records_to_excel_ind(
+        records,
+        file_path,
+        output_dir=output_dir
+    )
     print(f"file was written at: {output_dir}/{file_path}.xlsx")
+
+    for e in diagnosis_runtimes_ms:
+        print(math.floor(e))
 
 
 def single_experiment_FrozenLake_NON_DETERMINSTIC():
