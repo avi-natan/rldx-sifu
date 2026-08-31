@@ -30,7 +30,6 @@ from p_single_experiments import (single_experiment_manual, \
                                   single_experiment_Taxi_SIFU3, single_experiment_Taxi_SIFU4,
                                   single_experiment_Taxi_SIFU5, single_experiment_Taxi_SIFU6,
                                   single_experiment_Taxi_SIFU7, single_experiment_Taxi_SIFU8,
-                                  single_experiment_FrozenLake_SIF, multiple_experiments_FrozenLake_SIF,
                                   single_experiment_FrozenLake_NON_DETERMINSTIC,
                                   multiple_experiment_FrozenLake_NON_DETERMINSTIC_FO,
                                   multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO,
@@ -105,7 +104,6 @@ if __name__ == '__main__':
         # single_experiment_Acrobot_SIF()          # OK ALL
         # single_experiment_Acrobot_SIFU()         # OK ALL
 
-        # single_experiment_FrozenLake_SIF()
 
         print("At main")
         print(f"Running with epsilon={args.epsilon}")
@@ -150,8 +148,6 @@ if __name__ == '__main__':
 
 
         # single_experiment_FrozenLake_NON_DETERMINSTIC()
-        # single_experiment_FrozenLake_SIF()
-        # multiple_experiments_FrozenLake_SIF()
         print(f'finished gracefully1')
         play_done_alarm()
 
