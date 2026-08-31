@@ -35,6 +35,7 @@ from p_single_experiments import (single_experiment_manual, \
                                   multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO,
                                   multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO,
                                   multiple_experiment_Taxi_v4_hard_class2_PO,
+                                  multiple_experiment_FrozenLake_fault_benchmark,
                                   single_experiment_stochastic_Taxi_v4, single_experiment_stochastic_FrozenLake)
 
 
@@ -89,6 +90,14 @@ if __name__ == '__main__':
              "(default: 'general')"
     )
 
+    parser.add_argument(
+        "--fl_way",
+        type=int,
+        default=0,
+        help="FrozenLake fault-benchmark scheme: 1=Taxi-style (rare a*+near-twins), "
+             "2=distinguishable (most-used a*). 0 (default)=run the Taxi hard class-2 experiment."
+    )
+
     args = parser.parse_args()
 
     try:
@@ -134,17 +143,25 @@ if __name__ == '__main__':
         #single_experiment_stochastic_FrozenLake(run_folder=args.run_folder)
         # single_experiment_stochastic_Taxi_v4(run_folder=args.run_folder)
 
-        # === HARD class-2 epsilon experiment (fixed fr=0.3, visibility sweep 20..100) ===
-        # One epsilon per run -> one xlsx. Full sweep = run once per --epsilon value in
-        # {0.1, 0.07, 0.05, 0.04, 0.03, 0.02} (locally, or a 6-task SLURM array).
-        # Use a small num_seeds for a smoke run.
-        # Known-rate: default. Unknown-rate: pass -ufr on the CLI (10x more MC sims, ~10x slower).
-        multiple_experiment_Taxi_v4_hard_class2_PO(
-            epsilon=args.epsilon,
-            num_seeds=100,
-            run_folder=args.run_folder,
-            unknown_fault_rate=args.unknown_fault_rate,
-        )
+        # === experiment selection ===
+        # --fl_way 1 or 2  -> FrozenLake fault benchmark (known fr, one epsilon per run -> one xlsx)
+        # --fl_way 0 (default) -> Taxi-v4 hard class-2 experiment
+        if args.fl_way in (1, 2):
+            multiple_experiment_FrozenLake_fault_benchmark(
+                epsilon=args.epsilon,
+                way=args.fl_way,
+                num_maps=100,
+                run_folder=args.run_folder,
+                fault_rate=0.5,
+            )
+        else:
+            # Known-rate: default. Unknown-rate: pass -ufr on the CLI (10x more MC sims, ~10x slower).
+            multiple_experiment_Taxi_v4_hard_class2_PO(
+                epsilon=args.epsilon,
+                num_seeds=100,
+                run_folder=args.run_folder,
+                unknown_fault_rate=args.unknown_fault_rate,
+            )
 
 
         # single_experiment_FrozenLake_NON_DETERMINSTIC()

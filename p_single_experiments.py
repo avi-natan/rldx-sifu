@@ -1415,6 +1415,105 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
 
 
 
+def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, way=2, num_maps=100,
+                                                   run_folder=None, fault_rate=0.5):
+    """FrozenLake fault-diagnosis benchmark, KNOWN fault rate, one epsilon per call -> one xlsx.
+
+    Two candidate-construction schemes (see frozen_lake_fault_modes.py):
+      way=1  Taxi-style: rare a* + near-twins (deliberately hard/ambiguous).
+      way=2  distinguishable: most-used a* + redirects of the 3 most-used actions
+             (solvable at full obs; hardness comes from the visibility sweep).
+
+    Per map: profile the healthy policy (one slippery rollout at the instance seed) to get
+    command counts, build a* + 10 candidates for the chosen way, then diagnose over the
+    visibility sweep at fixed known fault_rate. Uses the pipeline's firing gate.
+    """
+    from collections import Counter
+    from p_executor import execute
+    from h_fault_model_generator import FaultModelGeneratorDiscrete
+    from frozen_lake_fault_modes import BUILDERS
+
+    build = BUILDERS[way]
+    way_token = f"way{way}"
+    domain_name = "FrozenLake_v1"
+    ml_model_name = "PPO"
+    render_mode = "rgb_array"
+    max_exec_len = 200
+    debug_print = False
+    percent_visible_states_list = [20, 40, 60, 80, 100]
+
+    loaded = load_pairs_from_json("frozenlake_maps_8x8_slippery.json")
+    num_maps = min(num_maps, len(loaded))
+    fmg = FaultModelGeneratorDiscrete()
+
+    print(f"Running FrozenLake fault benchmark ({way_token}, KNOWN fr) | epsilon={epsilon} | "
+          f"num_maps={num_maps} | fault_rate={fault_rate} | visibility={percent_visible_states_list}\n\n")
+
+    records = []
+    skipped = 0
+    for i in range(num_maps):
+        map_desc, policy = loaded[i]
+        DOMAIN_KWARGS["FrozenLake_v1"]["desc"] = map_desc
+        DOMAIN_KWARGS["FrozenLake_v1"]["is_slippery"] = True
+        h_rl_models.HARD_CODED_POLICY = policy
+        base = (10 + i) * SEED_BLOCK
+
+        # profile the healthy policy at the instance seed -> command counts -> a* + candidates
+        healthy_traj, _ = execute(domain_name, False, "[0,1,2,3]", base, 0.0, render_mode,
+                                  ml_model_name, fmg, max_exec_len, fault_seed_offset=0)
+        counts = Counter(int(a) for a in healthy_traj[1::2])
+        a_star, e_target, E_str, candidates = build(counts, seed=10 + i)
+
+        dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        print(f'================= {dt_string}: {way_token} MAP {i+1}/{num_maps} '
+              f'a*={a_star} fault={E_str} START =================')
+
+        for percent_visible_states in percent_visible_states_list:
+            print(f'===== {way_token} MAP {i+1} | FR={fault_rate} | VR={percent_visible_states} =====')
+            output = run_NON_DETERMINSTIC_single_experiment_PO(
+                domain_name=domain_name,
+                ml_model_name=ml_model_name,
+                render_mode=render_mode,
+                max_exec_len=max_exec_len,
+                debug_print=debug_print,
+                execution_fault_mode_name=E_str,
+                instance_seed=base,
+                fault_probability=fault_rate,
+                percent_visible_states=percent_visible_states,
+                possible_fault_mode_names=candidates,
+                num_candidate_fault_modes=len(candidates),
+                unknown_fault_rate=False,
+                fault_rate_candidates=None,
+                epsilon=epsilon,
+                fixed_candidate_fault_modes=candidates)
+
+            if not output:
+                skipped += 1
+                continue
+
+            output["epsilon"] = epsilon
+            output["experiment_num"] = i + 1
+            output["real_fault_prob"] = fault_rate
+            output["map_desc"] = f"map_{i}"
+            output["a_star"] = a_star
+            output["benchmark_way"] = way_token
+            output["execution_fault"] = E_str
+            output["hardcoded_policy"] = f"{domain_name}_{ml_model_name}"
+            output["domain_name"] = domain_name
+            records.append(output)
+
+    if not records:
+        print("No successful FrozenLake experiments produced.")
+        return
+
+    print(f"\nNumber of diagnosis runs: {len(records)} (skipped {skipped})")
+    file_suffix = str(epsilon).replace(".", "_")
+    file_path = f"frozenlake_{way_token}_PO_known_fr_epsilon_{file_suffix}_MAPS_{num_maps}"
+    output_dir = domain_results_dir(domain_name, run_folder)
+    exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)
+    print(f"file was written at: {output_dir}/{file_path}.xlsx")
+
+
 def single_experiment_FrozenLake_NON_DETERMINSTIC():
     # changable test settings - strong fault model intermittent faults (SIF)
 
