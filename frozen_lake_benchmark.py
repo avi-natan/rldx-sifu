@@ -271,7 +271,7 @@ if __name__ == "__main__":
 
     export_pairs_to_json(
         pairs,
-        json_path="frozenlake_100_pairs_risk_averse_slippery.json",
+        json_path="frozenlake_maps_8x8_slippery.json",
         infos=infos,
         meta={
             "n": N,
@@ -285,4 +285,4 @@ if __name__ == "__main__":
             "solvability_horizon": HORIZON,
         },
     )
-    print("wrote frozenlake_100_pairs_risk_averse_slippery.json")
+    print("wrote frozenlake_maps_8x8_slippery.json")

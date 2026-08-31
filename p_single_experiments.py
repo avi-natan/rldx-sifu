@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "experiments_scripts"))
 
 import h_rl_models
-from frozen_lake_random_envs_non_determinstic import load_pairs_from_json, print_map_and_policy
+from frozen_lake_benchmark import load_pairs_from_json, print_map_and_policy
 from h_consts import SEED_BLOCK
 from h_fault_model_generator import FaultModelGeneratorDiscrete
 from h_wrappers import DOMAIN_KWARGS
@@ -631,7 +631,7 @@ def save_all_plots(prefix="rank_plots"):
 def multiple_experiment_FrozenLake_NON_DETERMINSTIC_FO():
 
     global HARD_CODED_POLICY
-    loaded = load_pairs_from_json("frozenlake_100_pairs_risk_averse_slippery.json")
+    loaded = load_pairs_from_json("frozenlake_maps_8x8_slippery.json")
     diagnosis_runtimes_ms = []
     records = []
     NUM_TRIES = 49
@@ -793,7 +793,7 @@ def plot_num_gaps_vs_visibility_rate(records, title="Number of gaps vs visibilit
 def multiple_experiment_FrozenLake_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_rate=False, maps_num=49, run_folder=None):
 
     global HARD_CODED_POLICY
-    loaded = load_pairs_from_json("frozenlake_100_pairs_risk_averse_slippery.json")
+    loaded = load_pairs_from_json("frozenlake_maps_8x8_slippery.json")
     diagnosis_runtimes_ms = []
     records = []
 
@@ -1005,7 +1005,7 @@ def single_experiment_stochastic_FrozenLake(run_folder=None):
 
 
     global HARD_CODED_POLICY
-    loaded = load_pairs_from_json("frozenlake_100_pairs_risk_averse_slippery.json")
+    loaded = load_pairs_from_json("frozenlake_maps_8x8_slippery.json")
 
     epsilon = 0.03
     unknown_fault_rate = False
@@ -1432,7 +1432,7 @@ def single_experiment_FrozenLake_NON_DETERMINSTIC():
     """
 
     global HARD_CODED_POLICY
-    loaded = load_pairs_from_json("frozenlake_100_pairs_risk_averse_slippery.json")
+    loaded = load_pairs_from_json("frozenlake_maps_8x8_slippery.json")
     NUM_OF_MAPS_AND_POLICIES = 12
     choosen_num = 1
     map_desc, hardcoded_policy = loaded[choosen_num]
