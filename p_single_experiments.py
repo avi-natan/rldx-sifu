@@ -1301,14 +1301,25 @@ def multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_
     print(f"file was written at: {output_dir}/{file_path}.xlsx")
 
 
-def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_folder=None):
+def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_folder=None,
+                                               unknown_fault_rate=False):
     """Taxi-v4 HARD class-2 epsilon experiment (the "second experiment").
 
     Mirrors multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO, but the instances come from
     the v2 hard benchmark (hard_taxi_benchmark_v2.build_benchmark, CLASS 2 = least-used
-    commanded action a* with count >= 2) instead of the frozen v1 data, and the fault rate
-    is FIXED at 0.3 (only visibility is swept). Each instance is
+    commanded action a* with count >= 2) instead of the frozen v1 data, and the injected
+    fault rate is FIXED at 0.3 (only visibility is swept). Each instance is
     (main_seed, base, class, a*, execution_fault E, [10 candidate maps]).
+
+    unknown_fault_rate:
+        False (default) -> the diagnoser is TOLD the fault rate (0.3): known-rate diagnoser
+                           fault_identification_non_deterministic_PO. Output file: '..._known_fr_...'.
+        True            -> the diagnoser does NOT know the rate; it scores every candidate over
+                           fault_rate_candidates = 0.1..1.0 step 0.1 and picks the best per fault
+                           (fault_identification_non_deterministic_PO_unknown_fault_rate). Output
+                           file: '..._unknown_fr_...' (distinct name -> never overwrites known runs).
+                           WARNING: runs len(fault_rate_candidates)=10x more Monte-Carlo
+                           simulations, so ~10x slower per epsilon.
 
     One epsilon per call -> one xlsx (cluster-array friendly: run once per epsilon value).
     Trajectory creation can fail when the fault never fires -> we skip and count those.
@@ -1323,15 +1334,19 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
     debug_print = False
     num_candidate_fault_modes = 10
 
-    fault_rate_list = [0.3]                              # FIXED
+    fault_rate_list = [0.3]                              # FIXED injected rate
     percent_visible_states_list = [20, 40, 60, 80, 100]
+    # Rate grid the UNKNOWN-rate diagnoser searches over (unused when the rate is known).
+    fault_rate_candidates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0] if unknown_fault_rate else None
+    fr_token = "unknown_fr" if unknown_fault_rate else "known_fr"
 
     # Build the first num_seeds CLASS-2 instances (least-used a*, count >= 2).
     bench = build_benchmark(seeds_per_class=num_seeds, classes=(2,), verbose=False)
     instances = [inst for inst in bench if inst[2] == 2][:num_seeds]
 
-    print(f"Running Taxi-v4 PO diagnosis (HARD class-2) | epsilon={epsilon} | "
-          f"num_seeds={len(instances)} | fault_rate={fault_rate_list} | "
+    print(f"Running Taxi-v4 PO diagnosis (HARD class-2, {fr_token}) | epsilon={epsilon} | "
+          f"num_seeds={len(instances)} | injected_fault_rate={fault_rate_list} | "
+          f"fault_rate_candidates={fault_rate_candidates} | "
           f"visibility={percent_visible_states_list}\n\n")
 
     for i, (main_seed, base, _cid, a_star, execution_fault_mode_name, candidate_fault_modes) in enumerate(instances):
@@ -1357,8 +1372,8 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
                     possible_fault_mode_names=candidate_fault_modes,
                     num_candidate_fault_modes=num_candidate_fault_modes,
                     epsilon=epsilon,
-                    unknown_fault_rate=False,
-                    fault_rate_candidates=None,
+                    unknown_fault_rate=unknown_fault_rate,
+                    fault_rate_candidates=fault_rate_candidates,
                     fixed_candidate_fault_modes=candidate_fault_modes)
 
                 if not output:
@@ -1391,7 +1406,7 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
           f"({avg_diagnosis_time_sec:.2f} sec)")
 
     file_suffix = str(epsilon).replace(".", "_")
-    file_path = f"taxi_v4_hard_class2_PO_known_fr_epsilon_{file_suffix}_SEEDS_{num_seeds}"
+    file_path = f"taxi_v4_hard_class2_PO_{fr_token}_epsilon_{file_suffix}_SEEDS_{num_seeds}"
 
     output_dir = domain_results_dir(domain_name, run_folder)
     exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)

@@ -113,7 +113,7 @@ if __name__ == '__main__':
         print(f"maps_num={args.maps_num}")
 
         # epsilon comes from --epsilon (one value per run -> one xlsx); no longer hard-set here.
-        args.unknown_fault_rate = False
+        # unknown_fault_rate comes from -ufr/--unknown_fault_rate (default False); no longer hard-set here.
         args.maps_num = 49
 
 
@@ -140,10 +140,12 @@ if __name__ == '__main__':
         # One epsilon per run -> one xlsx. Full sweep = run once per --epsilon value in
         # {0.1, 0.07, 0.05, 0.04, 0.03, 0.02} (locally, or a 6-task SLURM array).
         # Use a small num_seeds for a smoke run.
+        # Known-rate: default. Unknown-rate: pass -ufr on the CLI (10x more MC sims, ~10x slower).
         multiple_experiment_Taxi_v4_hard_class2_PO(
             epsilon=args.epsilon,
             num_seeds=100,
             run_folder=args.run_folder,
+            unknown_fault_rate=args.unknown_fault_rate,
         )
 
 
