@@ -1415,41 +1415,51 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
 
 
 
-def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, way=2, unknown_fault_rate=False, maps_num=100, run_folder=None):
+def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_rate=False,
+                                                   fault_rate_list=(0.5, 0.8), maps_num=100,
+                                                   run_folder=None):
+    """FrozenLake WAY-2 fault-diagnosis benchmark (the only way we use; see
+    experimental results/FrozenLake_v1/BENCHMARK_WAYS.md).
 
+    Per map (from frozenlake_maps_8x8_slippery.json): profile the healthy policy -> command
+    counts -> build_way2 -> a*, execution fault E, and 10 DISTINGUISHABLE candidate fault modes.
+    Then sweep injected fault rate x visibility and diagnose.
+
+    Parametrized like multiple_experiment_Taxi_v4_hard_class2_PO:
+      fault_rate_list:     injected fault rate(s) to sweep (default (0.5, 0.8)); pass [0.3] for the
+                           0.3 runs. Encoded into the output filename so runs never overwrite.
+      unknown_fault_rate:  False (default) -> diagnoser is TOLD the rate (known_fr).
+                           True -> diagnoser searches fault_rate_candidates = 0.1..1.0 step 0.1
+                           (same grid as Taxi) and picks the best per fault (unknown_fr); ~10x slower.
+
+    One epsilon per call -> one xlsx (cluster-array friendly).
+    """
     global HARD_CODED_POLICY
     from collections import Counter
     from p_executor import execute
     from h_fault_model_generator import FaultModelGeneratorDiscrete
-    from frozen_lake_fault_modes import BUILDERS
+    from frozen_lake_fault_modes import build_way2
 
     loaded = load_pairs_from_json("frozenlake_maps_8x8_slippery.json")
     diagnosis_runtimes_ms = []
     records = []
 
-    if unknown_fault_rate:
-        fault_rate_candidates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-        fault_rate_candidates = [0.1, 0.3, 0.5, 0.7, 0.8]
-    else:
-        fault_rate_candidates = None
-
-
+    fault_rate_list = list(fault_rate_list)
+    # Rate grid the UNKNOWN-rate diagnoser searches over (same as Taxi); unused when rate is known.
+    fault_rate_candidates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0] if unknown_fault_rate else None
+    fr_token = "unknown_fr" if unknown_fault_rate else "known_fr"
 
     NUM_MAPS = maps_num
-    build = BUILDERS[way]                 # way 1 = Taxi-style / way 2 = distinguishable
     fault_mode_generator = FaultModelGeneratorDiscrete()
 
     msg = (
-        f"Running PO diagnosis (fault benchmark way{way}) | "
+        f"Running FrozenLake PO diagnosis (way2, {fr_token}) | "
         f"epsilon={epsilon} | "
-        f"unknown_fault_rate={unknown_fault_rate} | "
+        f"injected_fault_rate={fault_rate_list} | "
+        f"fault_rate_candidates={fault_rate_candidates} | "
         f"num_maps={NUM_MAPS}"
     )
-
-    if fault_rate_candidates is not None:
-        msg += f" | fault_rate_candidates={fault_rate_candidates}"
-
-    print(msg+ "\n\n")
+    print(msg + "\n\n")
 
     for i in range(NUM_MAPS):
 
@@ -1470,15 +1480,13 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, way=2, unknown_
         instance_seed = 10+i
         num_candidate_fault_modes = 10
 
-        # execution fault + 10 candidate fault modes come from the chosen benchmark way:
+        # execution fault + 10 distinguishable candidate fault modes come from way 2:
         # profile the healthy policy at the instance seed -> command counts -> a* + candidates.
         healthy_trajectory, _ = execute(domain_name, False, "[0,1,2,3]", instance_seed * SEED_BLOCK, 0.0,
                                         render_mode, ml_model_name, fault_mode_generator, max_exec_len, fault_seed_offset=0)
         counts = Counter(int(a) for a in healthy_trajectory[1::2])
-        a_star, e_target, execution_fault_mode_name, possible_fault_mode_names = build(counts, seed=instance_seed)
+        a_star, e_target, execution_fault_mode_name, possible_fault_mode_names = build_way2(counts, seed=instance_seed)
 
-        # 1.0 mean Non-intermittent fault - faults always occur
-        fault_rate_list = [0.5, 0.8]
         percent_visible_states_list = [20, 40, 60, 80, 100]
 
         for percent_visible_states in percent_visible_states_list:
@@ -1510,7 +1518,7 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, way=2, unknown_
                 output["map_desc"] = map_desc
                 output["hardcoded_policy"] = hardcoded_policy
                 output["domain_name"] = domain_name
-                output["benchmark_way"] = f"way{way}"
+                output["benchmark_way"] = "way2"
                 output["a_star"] = a_star
                 output["execution_fault"] = execution_fault_mode_name
 
@@ -1550,13 +1558,11 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, way=2, unknown_
     )
 
     file_suffix = str(epsilon).replace(".", "_")
+    # Injected fault rate(s) go into the filename so e.g. the fr=0.3 and fr=[0.5,0.8] runs
+    # never overwrite each other. [0.5, 0.8] -> "0_5-0_8"; [0.3] -> "0_3".
+    injfr_token = "-".join(str(fr).replace(".", "_") for fr in fault_rate_list)
 
-    if unknown_fault_rate:
-        method_suffix = "UN_known_fr"
-    else:
-        method_suffix = "known_fr"
-
-    file_path = f"frozenlake_way{way}_PO_{method_suffix}_epsilon_{file_suffix}_MAPS_{maps_num}"
+    file_path = f"frozenlake_way2_PO_{fr_token}_epsilon_{file_suffix}_INJFR_{injfr_token}_MAPS_{maps_num}"
 
     output_dir = domain_results_dir("FrozenLake_v1", run_folder)
     exper_write_records_to_excel_ind(

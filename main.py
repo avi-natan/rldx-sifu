@@ -91,13 +91,20 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        "--fl_way",
-        type=int,
-        default=0,
-        help="FrozenLake fault-benchmark scheme: 2=distinguishable (most-used a*) -- THE ONE WE USE. "
-             "1=Taxi-style (rare a*+near-twins) -- RETIRED BASELINE, do not run for real results "
-             "(see experimental results/FrozenLake_v1/BENCHMARK_WAYS.md). "
-             "0 (default)=run the Taxi hard class-2 experiment."
+        "--frozenlake",
+        action="store_true",
+        help="Run the FrozenLake way-2 fault benchmark (the only way we use; see "
+             "experimental results/FrozenLake_v1/BENCHMARK_WAYS.md). "
+             "Omit to run the Taxi-v4 hard class-2 experiment instead."
+    )
+
+    parser.add_argument(
+        "--fl_fault_rates",
+        type=float,
+        nargs="+",
+        default=[0.5, 0.8],
+        help="FrozenLake injected fault rate(s) to sweep (default: 0.5 0.8). "
+             "Pass '0.3' for the fr=0.3 runs. Encoded into the output filename."
     )
 
     args = parser.parse_args()
@@ -146,24 +153,13 @@ if __name__ == '__main__':
         # single_experiment_stochastic_Taxi_v4(run_folder=args.run_folder)
 
         # === experiment selection ===
-        # --fl_way 1 or 2  -> FrozenLake fault benchmark (known fr, one epsilon per run -> one xlsx)
-        # --fl_way 0 (default) -> Taxi-v4 hard class-2 experiment
-        if args.fl_way == 1:
-            # Way 1 is the RETIRED Taxi-style baseline (see BENCHMARK_WAYS.md). We keep the code
-            # for reproducibility but do not use its results. Require an explicit override so a
-            # stray "--fl_way 1" can never silently produce results we would report.
-            import os
-            if os.environ.get("ALLOW_RETIRED_WAY1") != "1":
-                raise ValueError(
-                    "fl_way=1 is the RETIRED FrozenLake baseline and is not run by default. "
-                    "We use way 2 only. To reproduce the baseline anyway, set ALLOW_RETIRED_WAY1=1."
-                )
-
-        if args.fl_way in (1, 2):
+        # --frozenlake   -> FrozenLake way-2 fault benchmark (one epsilon per run -> one xlsx)
+        # (default)      -> Taxi-v4 hard class-2 experiment
+        if args.frozenlake:
             multiple_experiment_FrozenLake_fault_benchmark(
                 epsilon=args.epsilon,
-                way=args.fl_way,
                 unknown_fault_rate=args.unknown_fault_rate,
+                fault_rate_list=args.fl_fault_rates,
                 maps_num=100,
                 run_folder=args.run_folder,
             )
