@@ -1441,8 +1441,8 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_r
     from frozen_lake_fault_modes import build_way2
 
     loaded = load_pairs_from_json("frozenlake_maps_8x8_slippery.json")
-    diagnosis_runtimes_ms = []
     records = []
+    skipped = 0
 
     fault_rate_list = list(fault_rate_list)
     # Rate grid the UNKNOWN-rate diagnoser searches over (same as Taxi); unused when rate is known.
@@ -1475,7 +1475,7 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_r
         ml_model_name = "PPO"                         # "PPO", "DQN"
         render_mode = "rgb_array"                     # "human", "rgb_array"
         max_exec_len = 200
-        debug_print = True
+        debug_print = False
 
         instance_seed = 10+i
         num_candidate_fault_modes = 10
@@ -1510,13 +1510,14 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_r
                                                                  fault_rate_candidates=fault_rate_candidates,
                                                                  fixed_candidate_fault_modes=possible_fault_mode_names)
                 if not output:
+                    skipped += 1
                     continue
 
                 output["epsilon"] = epsilon
                 output["experiment_num"] = i + 1
                 output["real_fault_prob"] = fault_rate
                 output["map_desc"] = map_desc
-                output["hardcoded_policy"] = hardcoded_policy
+                output["hardcoded_policy"] = f"{domain_name}_{ml_model_name}"
                 output["domain_name"] = domain_name
                 output["benchmark_way"] = "way2"
                 output["a_star"] = a_star
@@ -1527,9 +1528,12 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_r
 
                 print(f'=========================== END SINGLE EXPERIMENT MAP {i + 1}/{NUM_MAPS} with FR={fault_rate}, VR{percent_visible_states} ===========================')
 
-        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+        dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         print(f'======================================= {dt_string}: MAP {i+1}/{NUM_MAPS} END =======================================')
 
+    if not records:
+        print("No successful FrozenLake experiments produced (all trajectories failed).")
+        return
 
     from datetime import timedelta
 
@@ -1542,7 +1546,7 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_r
             total_diagnosis_time_sec / len(records)
     )
 
-    print(f"\nNumber of diagnosis runs: {len(records)}")
+    print(f"\nNumber of diagnosis runs: {len(records)} (skipped {skipped})")
 
     # timedelta prints 5:42:17 -> 5h, 42 min, 17 sec
     print(
@@ -1571,9 +1575,6 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_r
         output_dir=output_dir
     )
     print(f"file was written at: {output_dir}/{file_path}.xlsx")
-
-    for e in diagnosis_runtimes_ms:
-        print(math.floor(e))
 
 
 def single_experiment_FrozenLake_NON_DETERMINSTIC():
