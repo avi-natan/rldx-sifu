@@ -18,3 +18,11 @@ references/Ahmad Essa - Research Notes.pdf
 runs/taxi_v4/
 # Redundant local copy of the committed Taxi-v3/deterministic policy (== library/taxi_v4__deterministic_taxiv3_oldstrong).
 environments/Taxi_v4/models/PPO/Taxi_v4__PPO_deter.zip
+
+# Exception: version the "experimental results/" folder (xlsx, png, md) — keeping its
+# structure — but NOT the bulky logs/ subfolders. The global *.xlsx / *.png / logs/
+# ignores above still apply everywhere else in the repo.
+!experimental results/**/
+!experimental results/**
+# ...re-exclude logs inside experimental results (comes last, so it wins).
+experimental results/**/logs/
