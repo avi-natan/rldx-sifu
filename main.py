@@ -107,6 +107,22 @@ if __name__ == '__main__':
              "Pass '0.3' for the fr=0.3 runs. Encoded into the output filename."
     )
 
+    parser.add_argument(
+        "--fl_group",
+        type=int,
+        default=None,
+        help="FrozenLake map-group index (0-based) for job-array splitting. Splits the 100 "
+             "maps into --fl_num_groups equal groups; this task runs only its group. "
+             "Set to $SLURM_ARRAY_TASK_ID. Omit to run all maps in one process."
+    )
+
+    parser.add_argument(
+        "--fl_num_groups",
+        type=int,
+        default=10,
+        help="Number of FrozenLake map groups to split into (default: 10 -> 10 maps each)."
+    )
+
     args = parser.parse_args()
 
     try:
@@ -156,12 +172,25 @@ if __name__ == '__main__':
         # --frozenlake   -> FrozenLake way-2 fault benchmark (one epsilon per run -> one xlsx)
         # (default)      -> Taxi-v4 hard class-2 experiment
         if args.frozenlake:
+            FL_MAPS_NUM = 100
+            # --fl_group present -> run only this task's slice of the 100 maps (job-array split).
+            map_start, map_end = 0, None
+            if args.fl_group is not None:
+                group_size = FL_MAPS_NUM // args.fl_num_groups
+                map_start = args.fl_group * group_size
+                # last group absorbs any remainder from an uneven split
+                map_end = (map_start + group_size
+                           if args.fl_group < args.fl_num_groups - 1 else FL_MAPS_NUM)
+                print(f"FrozenLake group {args.fl_group}/{args.fl_num_groups} "
+                      f"-> maps [{map_start}, {map_end})")
             multiple_experiment_FrozenLake_fault_benchmark(
                 epsilon=args.epsilon,
                 unknown_fault_rate=args.unknown_fault_rate,
                 fault_rate_list=args.fl_fault_rates,
-                maps_num=100,
+                maps_num=FL_MAPS_NUM,
                 run_folder=args.run_folder,
+                map_start=map_start,
+                map_end=map_end,
             )
         else:
             # Known-rate: default. Unknown-rate: pass -ufr on the CLI (10x more MC sims, ~10x slower).

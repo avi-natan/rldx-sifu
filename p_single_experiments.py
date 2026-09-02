@@ -1417,7 +1417,7 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
 
 def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_rate=False,
                                                    fault_rate_list=(0.5, 0.8), maps_num=100,
-                                                   run_folder=None):
+                                                   run_folder=None, map_start=0, map_end=None):
     """FrozenLake WAY-2 fault-diagnosis benchmark (the only way we use; see
     experimental results/FrozenLake_v1/BENCHMARK_WAYS.md).
 
@@ -1431,6 +1431,11 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_r
       unknown_fault_rate:  False (default) -> diagnoser is TOLD the rate (known_fr).
                            True -> diagnoser searches fault_rate_candidates = 0.1..1.0 step 0.1
                            (same grid as Taxi) and picks the best per fault (unknown_fr); ~10x slower.
+      map_start, map_end:  half-open window of map indices to run, [map_start, map_end). Lets a
+                           SLURM job array split the 100 maps into groups (e.g. 10 tasks x 10 maps).
+                           map_end=None -> maps_num. The window is encoded into the output filename
+                           (MAPS_<start>-<end>) so groups never overwrite each other; merge the
+                           per-group xlsx afterwards.
 
     One epsilon per call -> one xlsx (cluster-array friendly).
     """
@@ -1450,6 +1455,11 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_r
     fr_token = "unknown_fr" if unknown_fault_rate else "known_fr"
 
     NUM_MAPS = maps_num
+    # Half-open map window [map_start, map_end); clamp to what's available.
+    if map_end is None:
+        map_end = NUM_MAPS
+    map_start = max(0, map_start)
+    map_end = min(map_end, NUM_MAPS, len(loaded))
     fault_mode_generator = FaultModelGeneratorDiscrete()
 
     msg = (
@@ -1457,11 +1467,12 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_r
         f"epsilon={epsilon} | "
         f"injected_fault_rate={fault_rate_list} | "
         f"fault_rate_candidates={fault_rate_candidates} | "
-        f"num_maps={NUM_MAPS}"
+        f"num_maps={NUM_MAPS} | "
+        f"map_window=[{map_start},{map_end})"
     )
     print(msg + "\n\n")
 
-    for i in range(NUM_MAPS):
+    for i in range(map_start, map_end):
 
         map_desc, hardcoded_policy = loaded[i]
         DOMAIN_KWARGS["FrozenLake_v1"]["desc"] = map_desc
@@ -1566,7 +1577,9 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_r
     # never overwrite each other. [0.5, 0.8] -> "0_5-0_8"; [0.3] -> "0_3".
     injfr_token = "-".join(str(fr).replace(".", "_") for fr in fault_rate_list)
 
-    file_path = f"frozenlake_way2_PO_{fr_token}_epsilon_{file_suffix}_INJFR_{injfr_token}_MAPS_{maps_num}"
+    # Map window in the filename so job-array groups never overwrite each other.
+    file_path = (f"frozenlake_way2_PO_{fr_token}_epsilon_{file_suffix}"
+                 f"_INJFR_{injfr_token}_MAPS_{map_start}-{map_end}")
 
     output_dir = domain_results_dir("FrozenLake_v1", run_folder)
     exper_write_records_to_excel_ind(
