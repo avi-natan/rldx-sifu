@@ -1,0 +1,13 @@
+PLOT PROVENANCE
+===============
+These plots were created by : C:\Users\User\Desktop\rldx_repo\rldx-sifu\scripts\plot_known_vs_unknown.py
+Generated                   : 2026-09-07 14:50:39
+Command                     : scripts/plot_known_vs_unknown.py
+
+Plots created in this folder (C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\Taxi_v4\known_vs_unknown_comparison):
+  - taxi_v4_rank_known_vs_unknown.png
+  - taxi_v4_time_known_vs_unknown.png
+
+Input data read from:
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\Taxi_v4\UNknown_fr_experiments_eps_sweep\xlsx
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\Taxi_v4\known_fr_experiments_eps_sweep\xlsx

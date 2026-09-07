@@ -19,6 +19,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from plot_provenance import write_plot_provenance
+
 RANK_COL = "real_fault_rank"
 FR_COL = "real_fault_prob"
 VIS_COL = "percent_visible_states"
@@ -63,14 +65,17 @@ def plot_by_series(df, x_col, series_col, x_label, series_label, title, out_path
     plt.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"  saved {out_path}")
+    return out_path
 
 
 def main():
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     base = os.path.join(repo_root, "experimental results", "FrozenLake_v1",
                         "known_fr_experiments")
-    fr03 = load_folder(os.path.join(base, "known_fr_03_eps_sweep", "xlsx"))
-    fr0508 = load_folder(os.path.join(base, "known_fr_05_08_eps_sweep", "xlsx"))
+    fr03_dir = os.path.join(base, "known_fr_03_eps_sweep", "xlsx")
+    fr0508_dir = os.path.join(base, "known_fr_05_08_eps_sweep", "xlsx")
+    fr03 = load_folder(fr03_dir)
+    fr0508 = load_folder(fr0508_dir)
     df = pd.concat([fr03, fr0508], ignore_index=True)
     df[FR_COL] = df[FR_COL].round(2)
 
@@ -81,22 +86,25 @@ def main():
           f"(pooled over epsilon)\n  -> {out_dir}\n")
 
     tag = "fl_way2_known_fr"
+    created = []
 
     # A. rank vs visibility, one line per fault rate
-    plot_by_series(
+    created.append(plot_by_series(
         df, x_col=VIS_COL, series_col=FR_COL,
         x_label="Visibility (% observed states)", series_label="fault rate",
         title="FrozenLake way2 (known fr): rank vs visibility, by fault rate",
-        out_path=os.path.join(out_dir, f"{tag}_rank_vs_visibility_by_fr.png"))
+        out_path=os.path.join(out_dir, f"{tag}_rank_vs_visibility_by_fr.png")))
 
     # C. rank vs fault rate, one line per visibility
-    plot_by_series(
+    created.append(plot_by_series(
         df, x_col=FR_COL, series_col=VIS_COL,
         x_label="Fault rate", series_label="visibility",
         title="FrozenLake way2 (known fr): rank vs fault rate, by visibility",
         out_path=os.path.join(out_dir, f"{tag}_rank_vs_faultrate_by_visibility.png"),
-        series_fmt=lambda v: f"{int(v)}%")
+        series_fmt=lambda v: f"{int(v)}%"))
 
+    write_plot_provenance(out_dir, created, input_sources=[fr03_dir, fr0508_dir],
+                          script_path=os.path.abspath(__file__))
     print("\nDone.")
 
 

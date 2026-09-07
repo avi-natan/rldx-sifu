@@ -81,6 +81,12 @@ Weight these heavily; treat `master`-only code as background.
   — env setup / training.
 - `scripts/` — analysis & plotting (`explore_experiemnts.py`, `plot_experiments.py`,
   `fault_rate_comparsion.py`).
+  - **STANDING RULE — plot provenance:** every script that writes plots must, after saving
+    them, drop a `PLOT_PROVENANCE.txt` into each plots folder recording the producing script's
+    full path (+ timestamp, plot list, input xlsx folders). Use the shared helper
+    `from plot_provenance import write_plot_provenance` — call
+    `write_plot_provenance(plots_dir, created_files, input_sources=[...])` once. Do NOT hand-roll
+    a per-script copy.
 
 ## Running
 

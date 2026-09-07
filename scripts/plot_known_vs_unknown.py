@@ -20,6 +20,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from plot_provenance import write_plot_provenance
+
 RANK_COL = "real_fault_rank"
 TIME_COL = "diagnosis_time_sec"
 EPS_COL = "epsilon"
@@ -79,6 +81,7 @@ def compare_plot(known, unknown, epsilons, value_col, ylabel, title, out_path,
     plt.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"  saved {out_path}")
+    return out_path
 
 
 def main():
@@ -95,13 +98,19 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     print(f"Shared epsilons: {shared}  |  -> {out_dir}\n")
 
-    compare_plot(known, unknown, shared, RANK_COL, "Avg real-fault rank",
+    created = []
+    created.append(compare_plot(known, unknown, shared, RANK_COL, "Avg real-fault rank",
                  "Taxi-v4 known vs unknown fr: rank by epsilon",
-                 os.path.join(out_dir, "taxi_v4_rank_known_vs_unknown.png"))
-    compare_plot(known, unknown, shared, TIME_COL, "Avg diagnosis time (sec)",
+                 os.path.join(out_dir, "taxi_v4_rank_known_vs_unknown.png")))
+    created.append(compare_plot(known, unknown, shared, TIME_COL, "Avg diagnosis time (sec)",
                  "Taxi-v4 known vs unknown fr: time by epsilon",
                  os.path.join(out_dir, "taxi_v4_time_known_vs_unknown.png"),
-                 annotate_ratio=True)
+                 annotate_ratio=True))
+
+    # input xlsx were located by glob; record their distinct parent folders
+    input_dirs = sorted({os.path.dirname(p) for p in (known_paths + unknown_paths)})
+    write_plot_provenance(out_dir, created, input_sources=input_dirs,
+                          script_path=os.path.abspath(__file__))
     print("\nDone.")
 
 

@@ -26,6 +26,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from plot_provenance import write_plot_provenance
+
 RANK_COL = "real_fault_rank"
 TIME_COL = "diagnosis_time_sec"
 EPS_COL = "epsilon"
@@ -72,6 +74,7 @@ def _line_plot(xs, ys, sems, ns, xlabel, ylabel, title, out_path, xticks=True):
     plt.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"  saved {out_path}")
+    return out_path
 
 
 def _multiline_plot(df, x_col, y_col, series_col, xlabel, ylabel, title, out_path):
@@ -96,6 +99,7 @@ def _multiline_plot(df, x_col, y_col, series_col, xlabel, ylabel, title, out_pat
     plt.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"  saved {out_path}")
+    return out_path
 
 
 def main():
@@ -119,42 +123,46 @@ def main():
     os.makedirs(args.out, exist_ok=True)
     print(f"Total rows: {len(df)}  |  writing plots to: {args.out}\n")
 
+    created = []
+
     # 1. rank vs epsilon
     xs, ys, se, ns = _agg(df, EPS_COL, RANK_COL)
-    _line_plot(xs, ys, se, ns, "Epsilon (MC CI half-width)", "Avg real-fault rank",
+    created.append(_line_plot(xs, ys, se, ns, "Epsilon (MC CI half-width)", "Avg real-fault rank",
                f"{args.title}: rank vs epsilon",
-               os.path.join(args.out, f"{args.tag}_rank_vs_epsilon.png"))
+               os.path.join(args.out, f"{args.tag}_rank_vs_epsilon.png")))
 
     # 2. time vs epsilon
     xs, ys, se, ns = _agg(df, EPS_COL, TIME_COL)
-    _line_plot(xs, ys, se, ns, "Epsilon (MC CI half-width)", "Avg diagnosis time (sec)",
+    created.append(_line_plot(xs, ys, se, ns, "Epsilon (MC CI half-width)", "Avg diagnosis time (sec)",
                f"{args.title}: time vs epsilon",
-               os.path.join(args.out, f"{args.tag}_time_vs_epsilon.png"))
+               os.path.join(args.out, f"{args.tag}_time_vs_epsilon.png")))
 
     # 3. rank vs visibility
     xs, ys, se, ns = _agg(df, VIS_COL, RANK_COL)
-    _line_plot(xs, ys, se, ns, "Visibility (% observed states)", "Avg real-fault rank",
+    created.append(_line_plot(xs, ys, se, ns, "Visibility (% observed states)", "Avg real-fault rank",
                f"{args.title}: rank vs visibility",
-               os.path.join(args.out, f"{args.tag}_rank_vs_visibility.png"))
+               os.path.join(args.out, f"{args.tag}_rank_vs_visibility.png")))
 
     # 4. time vs visibility
     xs, ys, se, ns = _agg(df, VIS_COL, TIME_COL)
-    _line_plot(xs, ys, se, ns, "Visibility (% observed states)", "Avg diagnosis time (sec)",
+    created.append(_line_plot(xs, ys, se, ns, "Visibility (% observed states)", "Avg diagnosis time (sec)",
                f"{args.title}: time vs visibility",
-               os.path.join(args.out, f"{args.tag}_time_vs_visibility.png"))
+               os.path.join(args.out, f"{args.tag}_time_vs_visibility.png")))
 
     # 5. rank vs visibility, one line per epsilon (proves epsilon-invariance at every vis)
-    _multiline_plot(df, VIS_COL, RANK_COL, EPS_COL,
+    created.append(_multiline_plot(df, VIS_COL, RANK_COL, EPS_COL,
                     "Visibility (% observed states)", "Avg real-fault rank",
                     f"{args.title}: rank vs visibility, by epsilon",
-                    os.path.join(args.out, f"{args.tag}_rank_vs_visibility_by_epsilon.png"))
+                    os.path.join(args.out, f"{args.tag}_rank_vs_visibility_by_epsilon.png")))
 
     # 6. time vs visibility, one line per epsilon (lines fan out -> epsilon costs time)
-    _multiline_plot(df, VIS_COL, TIME_COL, EPS_COL,
+    created.append(_multiline_plot(df, VIS_COL, TIME_COL, EPS_COL,
                     "Visibility (% observed states)", "Avg diagnosis time (sec)",
                     f"{args.title}: time vs visibility, by epsilon",
-                    os.path.join(args.out, f"{args.tag}_time_vs_visibility_by_epsilon.png"))
+                    os.path.join(args.out, f"{args.tag}_time_vs_visibility_by_epsilon.png")))
 
+    write_plot_provenance(args.out, created, input_sources=[args.input],
+                          script_path=os.path.abspath(__file__))
     print("\nDone.")
 
 
