@@ -1590,6 +1590,135 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_r
     print(f"file was written at: {output_dir}/{file_path}.xlsx")
 
 
+# Candidate fault modes for MiniGrid navigation (actions: 0=left,1=right,2=forward,3-6 no-ops).
+# Each spec remaps the healthy action; identity = "healthy". One is injected per instance
+# (rotated), and the whole set is the candidate list the diagnoser ranks.
+MINIGRID_FAULT_SPECS = [
+    "{0:1,1:0,2:2,3:3,4:4,5:5,6:6}",   # swap left/right
+    "{0:0,1:1,2:0,3:3,4:4,5:5,6:6}",   # forward -> turn left
+    "{0:0,1:1,2:1,3:3,4:4,5:5,6:6}",   # forward -> turn right
+    "{0:2,1:1,2:2,3:3,4:4,5:5,6:6}",   # left -> forward
+    "{0:0,1:2,2:2,3:3,4:4,5:5,6:6}",   # right -> forward
+    "{0:1,1:1,2:2,3:3,4:4,5:5,6:6}",   # left -> right (one-way)
+    "{0:0,1:0,2:2,3:3,4:4,5:5,6:6}",   # right -> left (one-way)
+    "{0:0,1:1,2:6,3:3,4:4,5:5,6:6}",   # forward -> done/no-op (stuck)
+    "{0:2,1:0,2:1,3:3,4:4,5:5,6:6}",   # cyclic shift of the nav actions
+    "{0:0,1:1,2:2,3:3,4:4,5:5,6:6}",   # identity (healthy / no fault)
+]
+
+
+def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rate=False,
+                                                 fault_rate_list=(0.3, 0.5, 0.8),
+                                                 num_instances=100, run_folder=None,
+                                                 inst_start=0, inst_end=None,
+                                                 domain_name="MiniGrid_Empty_16x16_v0"):
+    """MiniGrid PARTIAL-OBSERVABILITY (approach B) fault-diagnosis benchmark.
+
+    Approach B: the diagnoser sees only egocentric VIEWS. set_state localizes the observed
+    view to the set of consistent (col,row,dir) states and SAMPLES one (belief); the MC hit
+    test compares views. Settings mirror the FrozenLake way2 benchmark so the numbers are
+    comparable to that fully-observed baseline: same epsilon, same fault-rate x visibility
+    sweep (20/40/60/80/100), one xlsx per call.
+
+    Instance i (seed 10+i) injects one fault from MINIGRID_FAULT_SPECS (rotated); the full
+    spec set is the candidate list. inst_start/inst_end give a half-open instance window for
+    SLURM job-array splitting, encoded into the filename so groups never overwrite.
+    """
+    import h_wrappers
+    import h_raw_state_comparators as C
+
+    records = []
+    skipped = 0
+    fault_rate_list = list(fault_rate_list)
+    fault_rate_candidates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0] if unknown_fault_rate else None
+    fr_token = "unknown_fr" if unknown_fault_rate else "known_fr"
+
+    NUM = num_instances
+    if inst_end is None:
+        inst_end = NUM
+    inst_start = max(0, inst_start)
+    inst_end = min(inst_end, NUM)
+
+    ml_model_name = "PPO"
+    render_mode = "rgb_array"
+    max_exec_len = 80          # keep trajectories < MAX_STATES (200); plenty for a 16x16 room
+    debug_print = False
+    specs = MINIGRID_FAULT_SPECS
+    percent_visible_states_list = [20, 40, 60, 80, 100]
+
+    print(f"Running MiniGrid PO diagnosis (approach B, {fr_token}) | domain={domain_name} | "
+          f"epsilon={epsilon} | injected_fault_rate={fault_rate_list} | "
+          f"num_instances={NUM} | inst_window=[{inst_start},{inst_end})\n\n")
+
+    # --- Approach B mode: belief set_state + view comparison (restore on exit) ---
+    prev_mode = h_wrappers.MINIGRID_BELIEF_MODE
+    prev_cmp = C.comparators.get(domain_name)
+    h_wrappers.MINIGRID_BELIEF_MODE = True
+    C.comparators[domain_name] = C.make_minigrid_view_comparator(domain_name)
+
+    try:
+        for i in range(inst_start, inst_end):
+            instance_seed = 10 + i
+            execution_fault_mode_name = specs[i % len(specs)]
+            dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            print(f'============ {dt_string}: INSTANCE {i+1}/{NUM} '
+                  f'(inject {execution_fault_mode_name}) START ============')
+
+            for percent_visible_states in percent_visible_states_list:
+                for fault_rate in fault_rate_list:
+                    output = run_NON_DETERMINSTIC_single_experiment_PO(
+                        domain_name=domain_name,
+                        ml_model_name=ml_model_name,
+                        render_mode=render_mode,
+                        max_exec_len=max_exec_len,
+                        debug_print=debug_print,
+                        execution_fault_mode_name=execution_fault_mode_name,
+                        instance_seed=instance_seed * SEED_BLOCK,  # block base; run_PO derives offsets
+                        fault_probability=fault_rate,
+                        percent_visible_states=percent_visible_states,
+                        possible_fault_mode_names=specs,
+                        num_candidate_fault_modes=len(specs),
+                        epsilon=epsilon,
+                        unknown_fault_rate=unknown_fault_rate,
+                        fault_rate_candidates=fault_rate_candidates,
+                        fixed_candidate_fault_modes=specs,
+                    )
+                    if not output:
+                        skipped += 1
+                        continue
+
+                    output["epsilon"] = epsilon
+                    output["experiment_num"] = i + 1
+                    output["real_fault_prob"] = fault_rate
+                    output["map_desc"] = f"{domain_name}_seed_{instance_seed}"
+                    output["hardcoded_policy"] = f"{domain_name}_{ml_model_name}"
+                    output["domain_name"] = domain_name
+                    output["benchmark_way"] = "minigrid_B"
+                    output["execution_fault"] = execution_fault_mode_name
+                    records.append(output)
+
+            print(f'============ INSTANCE {i+1}/{NUM} END ============')
+    finally:
+        # restore defaults so we never leave the process in B mode / view-compare
+        h_wrappers.MINIGRID_BELIEF_MODE = prev_mode
+        if prev_cmp is not None:
+            C.comparators[domain_name] = prev_cmp
+
+    if not records:
+        print("No successful MiniGrid experiments produced (all trajectories failed).")
+        return
+
+    print(f"\nNumber of diagnosis runs: {len(records)} (skipped {skipped})")
+
+    file_suffix = str(epsilon).replace(".", "_")
+    injfr_token = "-".join(str(fr).replace(".", "_") for fr in fault_rate_list)
+    file_path = (f"minigrid_B_PO_{fr_token}_epsilon_{file_suffix}"
+                 f"_INJFR_{injfr_token}_INST_{inst_start}-{inst_end}")
+    output_dir = domain_results_dir(domain_name, run_folder)
+    exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)
+    print(f"file was written at: {output_dir}/{file_path}.xlsx")
+
+
 def single_experiment_FrozenLake_NON_DETERMINSTIC():
     # changable test settings - strong fault model intermittent faults (SIF)
 
