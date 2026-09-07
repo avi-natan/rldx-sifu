@@ -51,6 +51,17 @@ maps directly onto his likelihood ranking and unknown-fault-rate variant.
 
 - **FrozenLake** (stochastic) — working.
 - **Taxi-v4** (stochastic) — added, **not yet tested**.
+- **MiniGrid** (partially observed; branch `minigrid-integration`) — `MiniGrid-Empty-Random-6x6`
+  integrated for **approach A** (diagnoser runs on the FULL state `(col,row,dir)`, not the 7×7
+  egocentric view; MiniGrid's egocentric PO is only the policy's concern). End-to-end smoke test
+  passes reproducibly (`experiments_scripts/minigrid_empty_smoke.py` — true fault ranked #1).
+  Stochasticity via a custom `SeededStochasticActionWrapper` (MiniGrid's own
+  `StochasticActionWrapper` draws its coin from the GLOBAL numpy RNG → not seed-controlled →
+  do not use it). Policy is a deterministic greedy navigator (`MiniGridEmptyHardcodedPolicy`).
+  **Approach B** (diagnose from egocentric observations, needs belief/particle state) — TODO.
+  Install caveat: `pip install minigrid` pulls `pygame-ce`, which overwrites `pygame` and gets
+  blocked by Windows Application Control; fix = `pip uninstall -y pygame-ce pygame && pip install
+  pygame==2.6.1`.
 - **CliffWalking** — planned next.
 - Previous work used deterministic Gymnasium envs (Acrobot, CartPole, MountainCar, Taxi,
   LunarLander) — see the many `single_experiment_<Env>_<W|SN|SIF|SIFU…>` functions.

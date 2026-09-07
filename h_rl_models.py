@@ -107,6 +107,39 @@ class FrozenLakeHardcodedPolicy:
         return action, None
 
 
+class MiniGridEmptyHardcodedPolicy:
+    """Deterministic greedy navigation policy for a MiniGrid Empty room.
+
+    Consumes the raw state (agent_col, agent_row, agent_dir) and returns a discrete
+    action toward the fixed goal at (width-2, height-2).
+      actions:     0 = turn left, 1 = turn right, 2 = move forward
+      directions:  0 = east(+x), 1 = south(+y), 2 = west(-x), 3 = north(-y)
+    Defined for EVERY state (the Monte-Carlo diagnoser queries off-path states too).
+    Behaves like a deterministic trained policy: same state -> same action.
+    """
+    TURN_LEFT, TURN_RIGHT, FORWARD = 0, 1, 2
+
+    def __init__(self, goal):
+        self.goal = goal
+
+    def predict(self, obs, deterministic=True):
+        x, y, d = int(obs[0]), int(obs[1]), int(obs[2])
+        gx, gy = self.goal
+        dx, dy = gx - x, gy - y
+        if dx == 0 and dy == 0:
+            return self.FORWARD, None  # at goal; episode terminates on arrival
+        # desired heading: close the larger axis first
+        if abs(dx) >= abs(dy):
+            desired = 0 if dx > 0 else 2
+        else:
+            desired = 1 if dy > 0 else 3
+        if d == desired:
+            return self.FORWARD, None
+        # rotate toward the desired heading (dir+1 = turn right, dir-1 = turn left)
+        diff = (desired - d) % 4
+        return self.TURN_LEFT if diff == 3 else self.TURN_RIGHT, None
+
+
 class TaxiHardcodedPolicy:
     """Deterministic policy as a {state: action} lookup table.
 
@@ -151,6 +184,14 @@ def load_trained_model(domain_name, ml_model_name, env=None):
     if domain_name == "FrozenLake_v1":
         assert HARD_CODED_POLICY is not None, "FrozenLake policy not set"
         return FrozenLakeHardcodedPolicy(HARD_CODED_POLICY)
+
+    # MiniGrid Empty (approach A): a deterministic greedy navigator to the fixed goal
+    # at (width-2, height-2); size parsed from the domain name (e.g. 6x6 -> goal (4,4)).
+    if domain_name.startswith("MiniGrid"):
+        import re
+        m = re.search(r"(\d+)x(\d+)", domain_name)
+        w, h = (int(m.group(1)), int(m.group(2))) if m else (6, 6)
+        return MiniGridEmptyHardcodedPolicy(goal=(w - 2, h - 2))
 
     models_dir = f"environments/{domain_name}/models/{ml_model_name}"
     model_path = f"{models_dir}/{domain_name}__{ml_model_name}.zip"
