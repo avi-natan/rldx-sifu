@@ -1591,8 +1591,11 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_r
 
 
 # Candidate fault modes for MiniGrid navigation (actions: 0=left,1=right,2=forward,3-6 no-ops).
-# Each spec remaps the healthy action; identity = "healthy". One is injected per instance
-# (rotated), and the whole set is the candidate list the diagnoser ranks.
+# Each spec remaps the healthy action. The whole set (incl. identity) is the candidate list the
+# diagnoser ranks; but ONLY a REAL fault is ever INJECTED as ground truth (see the driver) — like
+# FrozenLake way2, which always injects a real execution fault. Injecting identity ("no fault")
+# makes trajectory generation fail (there is no fault to inject), so identity stays a candidate,
+# never an injection. Keep identity LAST so specs[:-1] are exactly the injectable real faults.
 MINIGRID_FAULT_SPECS = [
     "{0:1,1:0,2:2,3:3,4:4,5:5,6:6}",   # swap left/right
     "{0:0,1:1,2:0,3:3,4:4,5:5,6:6}",   # forward -> turn left
@@ -1603,8 +1606,10 @@ MINIGRID_FAULT_SPECS = [
     "{0:0,1:0,2:2,3:3,4:4,5:5,6:6}",   # right -> left (one-way)
     "{0:0,1:1,2:6,3:3,4:4,5:5,6:6}",   # forward -> done/no-op (stuck)
     "{0:2,1:0,2:1,3:3,4:4,5:5,6:6}",   # cyclic shift of the nav actions
-    "{0:0,1:1,2:2,3:3,4:4,5:5,6:6}",   # identity (healthy / no fault)
+    "{0:0,1:1,2:2,3:3,4:4,5:5,6:6}",   # identity (healthy / no fault) -- CANDIDATE ONLY, never injected
 ]
+# The real, injectable faults (identity excluded).
+MINIGRID_INJECTABLE_SPECS = MINIGRID_FAULT_SPECS[:-1]
 
 
 def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rate=False,
@@ -1673,7 +1678,8 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
     try:
         for u_idx, (i, percent_visible_states, fault_rate) in enumerate(my_units, start=unit_start):
             instance_seed = 10 + i
-            execution_fault_mode_name = specs[i % len(specs)]
+            # inject only a REAL fault (never identity); identity stays in the candidate set `specs`
+            execution_fault_mode_name = MINIGRID_INJECTABLE_SPECS[i % len(MINIGRID_INJECTABLE_SPECS)]
             dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
             print(f'==== {dt_string}: UNIT {u_idx} (inst {i+1}, vis {percent_visible_states}, '
                   f'fr {fault_rate}, inject {execution_fault_mode_name}) ====')
