@@ -110,6 +110,9 @@ def main():
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out_dir", default="runs/minigrid")
     p.add_argument("--n_steps", type=int, default=512)
+    p.add_argument("--ent_coef", type=float, default=0.01)
+    p.add_argument("--learning_rate", type=float, default=2.5e-4)
+    p.add_argument("--net_width", type=int, default=64, help="MLP hidden width (both layers)")
     p.add_argument("--use_subproc", action="store_true", help="SubprocVecEnv (parallel cores)")
     p.add_argument("--render_gif", action="store_true", help="save a greedy-episode GIF after training")
     args = p.parse_args()
@@ -123,8 +126,10 @@ def main():
     venv = VecCls([make_env(args.domain, args.noise_prob, args.seed, r) for r in range(args.n_envs)])
     venv = VecMonitor(venv)
 
+    policy_kwargs = dict(net_arch=[args.net_width, args.net_width])
     model = PPO("MlpPolicy", venv, seed=args.seed, n_steps=args.n_steps, batch_size=256,
-                gae_lambda=0.95, gamma=0.99, ent_coef=0.01, learning_rate=2.5e-4, verbose=1)
+                gae_lambda=0.95, gamma=0.99, ent_coef=args.ent_coef,
+                learning_rate=args.learning_rate, policy_kwargs=policy_kwargs, verbose=1)
 
     t0 = time.time()
     model.learn(total_timesteps=args.timesteps, progress_bar=False)
