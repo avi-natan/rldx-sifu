@@ -1,0 +1,14 @@
+PLOT PROVENANCE
+===============
+These plots were created by : C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental plot scripts\plot_frozenlake_unknown_faultrate.py
+Generated                   : 2026-09-07 15:25:58
+Command                     : experimental plot scripts/plot_frozenlake_unknown_faultrate.py
+
+Plots created in this folder (C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\FrozenLake_v1\UNknown_fr_experiments\combined_fault_rate_view):
+  - fl_way2_unknown_rank_vs_faultrate.png
+  - fl_way2_unknown_time_vs_faultrate.png
+  - fl_way2_unknown_rank_vs_faultrate_by_visibility.png
+  - fl_way2_unknown_time_vs_faultrate_by_visibility.png
+
+Input data read from:
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\FrozenLake_v1\UNknown_fr_experiments

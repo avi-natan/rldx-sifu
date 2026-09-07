@@ -79,14 +79,16 @@ Weight these heavily; treat `master`-only code as background.
   `eval_taxi_policy.py`, `run_epsilon_sweep.py`, `hard_taxi_benchmark*.py`, `hard_taxi_data.py`,
   `analyze_hard_instance.py`, `train_taxi.sbatch`); run from repo root. `frozen_lake_random_envs*.py`
   — env setup / training.
-- `experimental plots/` — **the current, relevant plot pipeline** (sibling of `experimental
+- `experimental plot scripts/` — **the current, relevant plot pipeline** (sibling of `experimental
   results/`). Holds the scripts that generate every plot under `experimental results/`:
   `plot_epsilon_sweep.py` (6-figure epsilon sweeps), `plot_fault_rate_view.py`,
   `plot_known_vs_unknown.py`, `plot_frozenlake_unknown.py` (FrozenLake unknown-fr per-experiment
-  + xlsx merge), and the shared helper `plot_provenance.py`. Run from repo root, e.g.
-  `./.venv_domains/Scripts/python.exe "experimental plots/plot_epsilon_sweep.py"`. They import
+  + xlsx merge), `plot_frozenlake_unknown_faultrate.py` (fault-rate view across the unknown
+  experiments), `plot_frozenlake_known_vs_unknown.py` (known vs unknown at eps=0.04, by fault
+  rate), and the shared helper `plot_provenance.py`. Run from repo root, e.g.
+  `./.venv_domains/Scripts/python.exe "experimental plot scripts/plot_epsilon_sweep.py"`. They import
   each other by bare module name (resolved via the running script's own dir), so keep them in
-  one folder.
+  one folder (one level under the repo root, so their `repo_root` math holds).
   - **STANDING RULE — plot provenance:** every script that writes plots must, after saving
     them, drop a `PLOT_PROVENANCE.txt` into each plots folder recording the producing script's
     full path (+ timestamp, plot list, input xlsx folders). Use the shared helper

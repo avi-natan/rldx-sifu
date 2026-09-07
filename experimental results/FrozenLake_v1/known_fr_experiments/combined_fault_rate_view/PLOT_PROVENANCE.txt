@@ -1,8 +1,8 @@
 PLOT PROVENANCE
 ===============
-These plots were created by : C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental plots\plot_fault_rate_view.py
-Generated                   : 2026-09-07 15:12:19
-Command                     : experimental plots/plot_fault_rate_view.py
+These plots were created by : C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental plot scripts\plot_fault_rate_view.py
+Generated                   : 2026-09-07 15:25:49
+Command                     : experimental plot scripts/plot_fault_rate_view.py
 
 Plots created in this folder (C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\FrozenLake_v1\known_fr_experiments\combined_fault_rate_view):
   - fl_way2_known_fr_rank_vs_visibility_by_fr.png

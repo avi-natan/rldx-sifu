@@ -1,8 +1,8 @@
 PLOT PROVENANCE
 ===============
-These plots were created by : C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental plots\plot_frozenlake_unknown.py
-Generated                   : 2026-09-07 15:12:15
-Command                     : experimental plots/plot_frozenlake_unknown.py
+These plots were created by : C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental plot scripts\plot_frozenlake_unknown.py
+Generated                   : 2026-09-07 15:25:54
+Command                     : experimental plot scripts/plot_frozenlake_unknown.py
 
 Plots created in this folder (C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\FrozenLake_v1\UNknown_fr_experiments\exper2_fr03_eps_004\plots):
   - fl_way2_unknown_fr03_rank_vs_visibility.png
