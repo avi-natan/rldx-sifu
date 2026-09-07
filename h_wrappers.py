@@ -148,36 +148,48 @@ class TaxiV4SetStepWrapper(gymnasium.Wrapper):
 class SeededStochasticActionWrapper(gymnasium.ActionWrapper):
     """Transition stochasticity for MiniGrid, drawn from the SEEDED env RNG.
 
-    MiniGrid's own StochasticActionWrapper draws its coin from the GLOBAL numpy RNG
-    (`np.random.uniform()`), which `reset(seed=...)` does NOT control — that makes
-    rollouts non-reproducible and bypasses the diagnoser's per-trace MC seeding. This
-    version draws the coin (and the replacement action) from `self.np_random`, which
-    IS seeded by `reset(seed)`, so env stochasticity is a deterministic function of the
-    seed — exactly like FrozenLake "slippery" / Taxi "rainy".
+    MiniGrid's own StochasticActionWrapper draws its slip-coin from the GLOBAL numpy RNG
+    (`np.random.uniform()`), which `reset(seed=...)` does NOT control — that makes rollouts
+    non-reproducible and bypasses the diagnoser's per-trace MC seeding (the SEED_BLOCK scheme
+    + common random numbers across candidate faults). This version draws BOTH the coin and the
+    replacement action from `self.np_random`, which IS seeded by `reset(seed)`, so env
+    stochasticity is a deterministic function of the seed — like FrozenLake "slippery" / Taxi "rainy".
 
-    With probability `prob` the intended action executes; otherwise a random action
-    from the action space is taken.
+    With probability `prob` the intended action executes; otherwise a random action is drawn
+    from `noise_actions`. This defaults to the 3 MEANINGFUL Empty-room actions
+    (0=left, 1=right, 2=forward): actions 3-6 (pickup/drop/toggle/done) are no-ops in an empty
+    room, so sampling the full Discrete(7) would turn most slips into a "stall in place" rather
+    than a genuine random move — not comparable to the movement-noise of FrozenLake/Taxi.
+    (MiniGrid's own wrapper has the same flaw: it samples 0-5, i.e. 3 of 6 are no-ops.)
     """
-    def __init__(self, env, prob=0.9):
+    def __init__(self, env, prob=0.9, noise_actions=(0, 1, 2)):
         super().__init__(env)
         self.prob = prob
+        self.noise_actions = tuple(noise_actions)
 
     def action(self, action):
         if self.np_random.random() < self.prob:
             return action
-        return int(self.np_random.integers(0, self.action_space.n))
+        return int(self.np_random.choice(self.noise_actions))
 
 
 _MINIGRID_VIEW_MAPS = {}
 
 def build_minigrid_view_maps(domain_name, render_seed=0):
     """Precompute, once per domain, the maps
-        state2view : (col,row,dir) -> egocentric-view bytes
-        view2states: view bytes    -> [ (col,row,dir), ... ]
-    by enumerating every interior state of the (fixed) grid and rendering it. The
+        state2view : (col,row,dir) -> observation key = (egocentric-image bytes, direction)
+        view2states: observation key -> [ (col,row,dir), ... ]
+    by enumerating every interior state of the (fixed) grid and reading its observation. The
     localization and the view comparator then run as O(1) dict lookups instead of calling
     gen_obs() hundreds of thousands of times in the Monte-Carlo hot loop (the real bottleneck).
-    Cached by domain, so the diagnoser's per-call wrappers all share one build."""
+    Cached by domain, so the diagnoser's per-call wrappers all share one build.
+
+    The observation key mirrors the DEFAULT MiniGrid observation the agent sees:
+    Dict(image, direction, mission). We key on the egocentric IMAGE *and* the DIRECTION compass
+    (mission is constant, so ignored). Because direction is observed, two states are aliased only
+    when they share BOTH the same image AND the same heading -> the remaining ambiguity is purely
+    POSITIONAL (in the open interior, many cells give the all-empty image, but only for the same
+    facing)."""
     if domain_name in _MINIGRID_VIEW_MAPS:
         return _MINIGRID_VIEW_MAPS[domain_name]
     import minigrid  # noqa: F401
@@ -189,7 +201,8 @@ def build_minigrid_view_maps(domain_name, render_seed=0):
         for y in range(1, u.height - 1):
             for d in range(4):
                 u.agent_pos = (x, y); u.agent_dir = d
-                vb = u.gen_obs()["image"].tobytes()
+                obs = u.gen_obs()
+                vb = (obs["image"].tobytes(), int(obs["direction"]))  # default obs = image + direction
                 state2view[(x, y, d)] = vb
                 view2states[vb].append((x, y, d))
     env.close()
@@ -201,13 +214,14 @@ def build_minigrid_view_maps(domain_name, render_seed=0):
 class MiniGridSetStepWrapper(gymnasium.Wrapper):
     """Makes a MiniGrid Empty-room env diagnosable under PARTIAL OBSERVABILITY.
 
-    We only ever observe the agent's egocentric 7x7 VIEW, and many (col,row,dir) states
-    produce the SAME view (aliasing — up to 252 states in the empty centre of a 16x16 room).
-    So `set_state` does NOT restore a known true state: it localizes the observed view to the
-    set of states consistent with it and SAMPLES one (position AND direction) to roll forward
-    from. The Monte-Carlo diagnoser thus averages over "where am I / which way am I facing?".
-    Pair with the view comparator (the default for MiniGrid domains) so the MC hit test also
-    compares views. Sampling uses a per-reset seeded RNG, so it is reproducible and folds into
+    We only ever observe the agent's DEFAULT observation (egocentric 7x7 image + direction
+    compass), and many (col,row,dir) states produce the SAME observation (aliasing). Because
+    direction is observed, the ambiguity is purely POSITIONAL: states sharing the same image AND
+    the same heading. So `set_state` does NOT restore a known true state: it localizes the observed
+    view to the set of states consistent with it and SAMPLES one consistent POSITION to roll
+    forward from (the sampled state keeps the observed direction). The Monte-Carlo diagnoser thus
+    averages over "where am I?" given a known facing. Pair with the view comparator (the default
+    for MiniGrid domains) so the MC hit test also compares observations. Sampling uses a per-reset seeded RNG, so it is reproducible and folds into
     the diagnoser's per-trace seeding (see [[seeding-namespace-redesign]]).
 
     Perf: MiniGrid's step()/reset() build a 7x7 observation via gen_obs() and return it, but we
