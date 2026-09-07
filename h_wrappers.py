@@ -287,9 +287,11 @@ DOMAIN_KWARGS = {
 }
 
 # MiniGrid is deterministic by default; we inject transition stochasticity (the analog
-# of FrozenLake "slippery") with StochasticActionWrapper: with probability MINIGRID_ACTION_PROB
-# the intended action executes, otherwise a random action is taken.
-MINIGRID_ACTION_PROB = 0.9
+# of FrozenLake "slippery") with SeededStochasticActionWrapper: with probability
+# MINIGRID_ACTION_PROB the intended action executes, otherwise a random action is taken.
+# Keep <= 0.7 (>= 30% noise) so the domain is genuinely stochastic, comparable to
+# FrozenLake slippery / Taxi rainy.
+MINIGRID_ACTION_PROB = 0.7
 
 # Approach selector for MiniGrid. False (default) = approach A: set_state restores the exact
 # state. True = approach B: set_state samples a state consistent with the observed view

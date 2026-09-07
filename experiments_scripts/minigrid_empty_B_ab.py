@@ -27,6 +27,9 @@ from p_diagnosers import fault_identification_non_deterministic_PO
 _ap = argparse.ArgumentParser()
 _ap.add_argument("--domain", default="MiniGrid_Empty_16x16_v0")
 _ap.add_argument("--max_len", type=int, default=55)
+_ap.add_argument("--hide_every", type=int, default=2,
+                 help="hide 1 of every N interior states (2 = ~50%% visible; 3 = ~67%%; 1000 = ~100%%)")
+_ap.add_argument("--seeds", type=int, nargs="+", default=[777, 101, 2024, 55, 900])
 _args, _ = _ap.parse_known_args()
 
 DOMAIN = _args.domain
@@ -35,7 +38,8 @@ RENDER = "rgb_array"
 FAULT_RATE = 0.5
 EPSILON = 0.05
 MAX_LEN = _args.max_len
-SEEDS = [777, 101, 2024, 55, 900]
+HIDE_EVERY = _args.hide_every
+SEEDS = _args.seeds
 
 gen = FaultModelGeneratorDiscrete()
 FAULTS = {
@@ -63,7 +67,7 @@ def faulty_trajectory(sim, policy, refiner, fault, seed):
             break
     obs = list(traj)
     for i in range(1, len(obs) - 1):
-        if i % 2 == 0:
+        if i % HIDE_EVERY == 0:
             obs[i] = None
     return obs
 
