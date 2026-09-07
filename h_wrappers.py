@@ -3,6 +3,7 @@ from collections import defaultdict
 
 import gym
 import gymnasium
+from gymnasium.utils import seeding
 import numpy
 
 class AcrobotSetStepWrapper(gym.Wrapper):
@@ -182,6 +183,14 @@ class MiniGridSetStepWrapper(gymnasium.Wrapper):
     """
     def __init__(self, env):
         super().__init__(env)
+        self._grid_built = False
+        # BIG speedup: MiniGrid's step()/reset() build a 7x7 egocentric observation via
+        # gen_obs() and return it — but we never use it (we read agent_pos/agent_dir directly,
+        # and belief/comparator use precomputed view maps). gen_obs was ~75% of diagnosis time
+        # (called once per Monte-Carlo step). Stub it to a no-op; MiniGrid only returns its
+        # value, never uses it internally. (Env built with disable_env_checker=True so no
+        # wrapper validates the None observation.)
+        self.unwrapped.gen_obs = lambda *a, **k: None
 
     def _raw(self):
         u = self.unwrapped
@@ -189,6 +198,10 @@ class MiniGridSetStepWrapper(gymnasium.Wrapper):
         return (int(pos[0]), int(pos[1]), int(u.agent_dir))
 
     def reset(self, seed=None, options=None):
+        # Full reset (rebuilds the grid). A "fast reset" that skips the rebuild was tried but
+        # CHANGED RESULTS: Empty-16x16 grid generation consumes np_random draws, so skipping it
+        # shifts the RNG stream and alters the Monte-Carlo outcomes. The big win is the gen_obs
+        # stub (see __init__) + disable_env_checker, which are RNG-neutral.
         obs, info = self.env.reset(seed=seed, options=options)
         return self._raw(), info
 
@@ -200,6 +213,36 @@ class MiniGridSetStepWrapper(gymnasium.Wrapper):
     def step(self, action):
         obs, reward, terminated, truncated, info = self.env.step(int(action))
         return self._raw(), reward, terminated, truncated, info
+
+
+_MINIGRID_VIEW_MAPS = {}
+
+def build_minigrid_view_maps(domain_name, render_seed=0):
+    """Precompute, once per domain, the maps
+        state2view : (col,row,dir) -> egocentric-view bytes
+        view2states: view bytes    -> [ (col,row,dir), ... ]
+    by enumerating every interior state of the (fixed) grid and rendering it. The belief
+    localization and the view comparator then run as O(1) dict lookups instead of calling
+    gen_obs() hundreds of thousands of times in the Monte-Carlo hot loop (the real bottleneck).
+    Cached by domain, so the diagnoser's per-call wrappers all share one build."""
+    if domain_name in _MINIGRID_VIEW_MAPS:
+        return _MINIGRID_VIEW_MAPS[domain_name]
+    import minigrid  # noqa: F401
+    env = gymnasium.make(domain_name.replace('_', '-'))
+    env.reset(seed=render_seed)
+    u = env.unwrapped
+    state2view, view2states = {}, defaultdict(list)
+    for x in range(1, u.width - 1):
+        for y in range(1, u.height - 1):
+            for d in range(4):
+                u.agent_pos = (x, y); u.agent_dir = d
+                vb = u.gen_obs()["image"].tobytes()
+                state2view[(x, y, d)] = vb
+                view2states[vb].append((x, y, d))
+    env.close()
+    maps = (state2view, dict(view2states))
+    _MINIGRID_VIEW_MAPS[domain_name] = maps
+    return maps
 
 
 class MiniGridBeliefSetStepWrapper(MiniGridSetStepWrapper):
@@ -214,40 +257,21 @@ class MiniGridBeliefSetStepWrapper(MiniGridSetStepWrapper):
     Sampling uses a per-reset seeded RNG, so it is reproducible and folds into the
     diagnoser's per-trace MC seeding (see [[seeding-namespace-redesign]]).
     """
-    def __init__(self, env):
+    def __init__(self, env, domain_name):
         super().__init__(env)
-        self._view_to_states = None      # localizer: view-bytes -> [ (col,row,dir), ... ]
+        # precomputed O(1) localization maps (shared, cached per domain)
+        self._state2view, self._view_to_states = build_minigrid_view_maps(domain_name)
         self._belief_rng = random.Random(0)
-
-    def _build_localizer(self):
-        u = self.unwrapped
-        saved = (tuple(u.agent_pos), int(u.agent_dir))
-        table = defaultdict(list)
-        for x in range(1, u.width - 1):
-            for y in range(1, u.height - 1):
-                for d in range(4):
-                    u.agent_pos = (x, y); u.agent_dir = d
-                    table[u.gen_obs()["image"].tobytes()].append((x, y, d))
-        u.agent_pos, u.agent_dir = saved
-        self._view_to_states = dict(table)
 
     def reset(self, seed=None, options=None):
         raw, info = super().reset(seed=seed, options=options)
-        if self._view_to_states is None:
-            self._build_localizer()          # grid is fixed for the env id -> build once
         self._belief_rng = random.Random(seed if seed is not None else 0)
         return raw, info
 
-    def _view_bytes_of(self, raw_state):
-        u = self.unwrapped
-        u.agent_pos = (int(raw_state[0]), int(raw_state[1])); u.agent_dir = int(raw_state[2])
-        return u.gen_obs()["image"].tobytes()
-
     def set_state(self, raw_state):
-        if self._view_to_states is None:
-            self._build_localizer()
-        vb = self._view_bytes_of(raw_state)
-        candidates = self._view_to_states.get(vb, [tuple(raw_state)])
+        key = (int(raw_state[0]), int(raw_state[1]), int(raw_state[2]))
+        vb = self._state2view.get(key)
+        candidates = self._view_to_states.get(vb, [key])
         sampled = self._belief_rng.choice(candidates)   # sample a consistent (col,row,dir)
         u = self.unwrapped
         u.agent_pos = (int(sampled[0]), int(sampled[1])); u.agent_dir = int(sampled[2])
@@ -308,16 +332,24 @@ def make_wrapped_env(domain_name, render_mode):
 
     if is_minigrid:
         import minigrid  # noqa: F401  (registers the MiniGrid-* envs with gymnasium)
-
-    base_env = used_gym.make(
-        domain_name.replace('_', '-'),
-        render_mode=render_mode,
-        **kwargs
-    )
+        # disable_env_checker: drop the PassiveEnvChecker wrapper (per-step overhead, and it
+        # would reject our stubbed None observation — see MiniGridSetStepWrapper).
+        base_env = used_gym.make(
+            domain_name.replace('_', '-'),
+            render_mode=render_mode,
+            disable_env_checker=True,
+            **kwargs
+        )
+    else:
+        base_env = used_gym.make(
+            domain_name.replace('_', '-'),
+            render_mode=render_mode,
+            **kwargs
+        )
 
     if is_minigrid:
         base_env = SeededStochasticActionWrapper(base_env, prob=MINIGRID_ACTION_PROB)
         if MINIGRID_BELIEF_MODE:
-            return MiniGridBeliefSetStepWrapper(base_env)   # approach B (localize + sample)
+            return MiniGridBeliefSetStepWrapper(base_env, domain_name)  # approach B (localize+sample)
 
     return wrappers[domain_name](base_env)

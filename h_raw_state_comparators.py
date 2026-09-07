@@ -26,28 +26,21 @@ def minigrid_compare(raw_state1, raw_state2):
 
 
 def make_minigrid_view_comparator(domain_name, render_seed=0):
-    """Approach B0: compare states by the EGOCENTRIC VIEW they produce, not by the
+    """Approach B0/B: compare states by the EGOCENTRIC VIEW they produce, not by the
     exact (col,row,dir). Two states that look identical to the agent count as equal.
 
-    Returns a comparator closure holding one cached MiniGrid env used purely to render
-    views (Empty's grid is fixed across seeds, so any state's view is well-defined).
-    Swap it into `comparators[domain_name]` to run the diagnoser in B0 mode; the exact
-    `minigrid_compare` stays the default (approach A).
+    Uses the precomputed state->view map (built once per domain), so each comparison is an
+    O(1) dict lookup rather than a gen_obs() render — critical because the Monte-Carlo hit
+    test runs this hundreds of thousands of times. Swap it into `comparators[domain_name]`
+    for B0/B mode; the exact `minigrid_compare` stays the default (approach A).
     """
-    import gymnasium
-    import minigrid  # noqa: F401  (registers the envs)
-
-    env = gymnasium.make(domain_name.replace('_', '-'))
-    env.reset(seed=render_seed)
-    u = env.unwrapped
-
-    def _view_bytes(s):
-        u.agent_pos = (int(s[0]), int(s[1]))
-        u.agent_dir = int(s[2])
-        return u.gen_obs()["image"].tobytes()
+    from h_wrappers import build_minigrid_view_maps
+    state2view, _ = build_minigrid_view_maps(domain_name, render_seed=render_seed)
 
     def view_compare(raw_state1, raw_state2):
-        return _view_bytes(raw_state1) == _view_bytes(raw_state2)
+        k1 = (int(raw_state1[0]), int(raw_state1[1]), int(raw_state1[2]))
+        k2 = (int(raw_state2[0]), int(raw_state2[1]), int(raw_state2[2]))
+        return state2view.get(k1, k1) == state2view.get(k2, k2)
 
     return view_compare
 
