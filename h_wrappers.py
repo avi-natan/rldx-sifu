@@ -207,6 +207,7 @@ wrappers = {
     "Taxi_v4": TaxiV4SetStepWrapper,
     "FrozenLake_v1": FrozenLakeSetStepWrapper,
     "MiniGrid_Empty_Random_6x6_v0": MiniGridSetStepWrapper,
+    "MiniGrid_Empty_16x16_v0": MiniGridSetStepWrapper,
 }
 
 FROZENLAKE_DESC = [

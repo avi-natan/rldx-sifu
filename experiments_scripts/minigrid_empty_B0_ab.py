@@ -7,7 +7,7 @@ and prints how the true fault's rank/score changes. Everything else is identical
 Run from repo root:
   ./.venv_domains/Scripts/python.exe experiments_scripts/minigrid_empty_B0_ab.py
 """
-import os, sys, random as pyrandom
+import os, sys, argparse, random as pyrandom
 sys.path.insert(0, os.path.abspath("."))
 
 from h_wrappers import make_wrapped_env
@@ -17,12 +17,18 @@ import h_raw_state_comparators as C
 from h_fault_model_generator import FaultModelGeneratorDiscrete
 from p_diagnosers import fault_identification_non_deterministic_PO
 
-DOMAIN = "MiniGrid_Empty_Random_6x6_v0"
+_ap = argparse.ArgumentParser()
+_ap.add_argument("--domain", default="MiniGrid_Empty_Random_6x6_v0",
+                 help="e.g. MiniGrid_Empty_16x16_v0 (bigger/emptier -> more view aliasing)")
+_ap.add_argument("--max_len", type=int, default=18, help="max trajectory length")
+_args, _ = _ap.parse_known_args()
+
+DOMAIN = _args.domain
 MODEL = "PPO"
 RENDER = "rgb_array"
 FAULT_RATE = 0.5
 EPSILON = 0.05
-MAX_LEN = 18
+MAX_LEN = _args.max_len
 SEEDS = [777, 101, 2024, 55, 900]
 
 gen = FaultModelGeneratorDiscrete()

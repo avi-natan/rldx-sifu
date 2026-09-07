@@ -60,4 +60,5 @@ comparators = {
     "Taxi_v4": taxi_compare,
     "FrozenLake_v1": frozen_lake_compare,
     "MiniGrid_Empty_Random_6x6_v0": minigrid_compare,
+    "MiniGrid_Empty_16x16_v0": minigrid_compare,
 }

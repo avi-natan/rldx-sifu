@@ -38,4 +38,5 @@ refiners = {
     "Taxi_v4": taxi_refiner,
     "FrozenLake_v1": frozen_lake_refiner,
     "MiniGrid_Empty_Random_6x6_v0": minigrid_refiner,
+    "MiniGrid_Empty_16x16_v0": minigrid_refiner,
 }
