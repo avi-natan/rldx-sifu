@@ -1,3 +1,6 @@
+import random
+from collections import defaultdict
+
 import gym
 import gymnasium
 import numpy
@@ -199,6 +202,57 @@ class MiniGridSetStepWrapper(gymnasium.Wrapper):
         return self._raw(), reward, terminated, truncated, info
 
 
+class MiniGridBeliefSetStepWrapper(MiniGridSetStepWrapper):
+    """Approach B (partial observability): `set_state` does NOT restore the exact state.
+
+    We only observe the agent's egocentric VIEW, and many states share a view (aliasing).
+    So given a state whose view we observed, this wrapper localizes — looks up ALL states
+    that produce the same view — and SAMPLES one of them (position AND direction) to start
+    the rollout from. The Monte-Carlo thus averages over "where am I / which way am I facing?"
+    Pair with the view comparator so the hit test also compares views, not exact states.
+
+    Sampling uses a per-reset seeded RNG, so it is reproducible and folds into the
+    diagnoser's per-trace MC seeding (see [[seeding-namespace-redesign]]).
+    """
+    def __init__(self, env):
+        super().__init__(env)
+        self._view_to_states = None      # localizer: view-bytes -> [ (col,row,dir), ... ]
+        self._belief_rng = random.Random(0)
+
+    def _build_localizer(self):
+        u = self.unwrapped
+        saved = (tuple(u.agent_pos), int(u.agent_dir))
+        table = defaultdict(list)
+        for x in range(1, u.width - 1):
+            for y in range(1, u.height - 1):
+                for d in range(4):
+                    u.agent_pos = (x, y); u.agent_dir = d
+                    table[u.gen_obs()["image"].tobytes()].append((x, y, d))
+        u.agent_pos, u.agent_dir = saved
+        self._view_to_states = dict(table)
+
+    def reset(self, seed=None, options=None):
+        raw, info = super().reset(seed=seed, options=options)
+        if self._view_to_states is None:
+            self._build_localizer()          # grid is fixed for the env id -> build once
+        self._belief_rng = random.Random(seed if seed is not None else 0)
+        return raw, info
+
+    def _view_bytes_of(self, raw_state):
+        u = self.unwrapped
+        u.agent_pos = (int(raw_state[0]), int(raw_state[1])); u.agent_dir = int(raw_state[2])
+        return u.gen_obs()["image"].tobytes()
+
+    def set_state(self, raw_state):
+        if self._view_to_states is None:
+            self._build_localizer()
+        vb = self._view_bytes_of(raw_state)
+        candidates = self._view_to_states.get(vb, [tuple(raw_state)])
+        sampled = self._belief_rng.choice(candidates)   # sample a consistent (col,row,dir)
+        u = self.unwrapped
+        u.agent_pos = (int(sampled[0]), int(sampled[1])); u.agent_dir = int(sampled[2])
+
+
 wrappers = {
     "Acrobot_v1": AcrobotSetStepWrapper,
     "CartPole_v1": CartPoleSetStepWrapper,
@@ -237,6 +291,12 @@ DOMAIN_KWARGS = {
 # the intended action executes, otherwise a random action is taken.
 MINIGRID_ACTION_PROB = 0.9
 
+# Approach selector for MiniGrid. False (default) = approach A: set_state restores the exact
+# state. True = approach B: set_state samples a state consistent with the observed view
+# (MiniGridBeliefSetStepWrapper). B mode should be paired with the view comparator. Opt in by
+# setting h_wrappers.MINIGRID_BELIEF_MODE = True before building the env / running the diagnoser.
+MINIGRID_BELIEF_MODE = False
+
 
 def make_wrapped_env(domain_name, render_mode):
     kwargs = DOMAIN_KWARGS.get(domain_name, {})
@@ -255,5 +315,7 @@ def make_wrapped_env(domain_name, render_mode):
 
     if is_minigrid:
         base_env = SeededStochasticActionWrapper(base_env, prob=MINIGRID_ACTION_PROB)
+        if MINIGRID_BELIEF_MODE:
+            return MiniGridBeliefSetStepWrapper(base_env)   # approach B (localize + sample)
 
     return wrappers[domain_name](base_env)
