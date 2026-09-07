@@ -1,0 +1,111 @@
+XLSX MERGE NOTE
+===============
+Merged by  : C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental plots\plot_frozenlake_unknown.py
+Generated  : 2026-09-07 15:12:13
+Source dir : C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\FrozenLake_v1\UNknown_fr_experiments\exper1_fr05_eps_004\xlsx
+Merged     : 99 per-map-group xlsx files -> 1 file, 495 rows total
+Output file: C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\FrozenLake_v1\UNknown_fr_experiments\exper1_fr05_eps_004\exper1_fr05_eps_004_MERGED.xlsx
+
+The individual per-map-group files under xlsx/ are unchanged; this merged file is a
+single-file convenience copy of the same rows. Plots are built from these rows.
+
+Source files:
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_0-1.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_1-2.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_10-11.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_11-12.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_12-13.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_13-14.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_14-15.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_15-16.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_16-17.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_17-18.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_18-19.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_19-20.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_2-3.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_20-21.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_21-22.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_22-23.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_23-24.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_24-25.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_25-26.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_26-27.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_27-28.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_28-29.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_29-30.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_3-4.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_30-31.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_31-32.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_32-33.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_33-34.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_34-35.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_35-36.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_36-37.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_37-38.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_38-39.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_39-40.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_4-5.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_40-41.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_41-42.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_42-43.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_43-44.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_44-45.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_45-46.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_46-47.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_47-48.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_48-49.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_49-50.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_5-6.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_50-51.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_51-52.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_52-53.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_53-54.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_54-55.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_55-56.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_56-57.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_57-58.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_58-59.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_59-60.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_6-7.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_60-61.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_61-62.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_62-63.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_63-64.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_64-65.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_65-66.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_66-67.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_67-68.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_68-69.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_69-70.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_7-8.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_70-71.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_71-72.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_72-73.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_73-74.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_74-75.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_75-76.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_76-77.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_77-78.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_78-79.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_79-80.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_8-9.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_80-81.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_81-82.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_82-83.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_83-84.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_84-85.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_85-86.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_87-88.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_88-89.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_89-90.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_9-10.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_90-91.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_91-92.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_92-93.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_93-94.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_94-95.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_95-96.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_96-97.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_97-98.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_98-99.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_5_MAPS_99-100.xlsx

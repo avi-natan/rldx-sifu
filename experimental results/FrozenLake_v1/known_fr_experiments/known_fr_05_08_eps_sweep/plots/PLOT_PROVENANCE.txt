@@ -1,7 +1,7 @@
 PLOT PROVENANCE
 ===============
-These plots were created by : C:\Users\User\Desktop\rldx_repo\rldx-sifu\scripts\plot_epsilon_sweep.py
-Generated                   : 2026-09-07 14:52:54
+These plots were created by : C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental plots\plot_epsilon_sweep.py
+Generated                   : 2026-09-07 15:12:35
 Command                     : -
 
 Plots created in this folder (C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\FrozenLake_v1\known_fr_experiments\known_fr_05_08_eps_sweep\plots):

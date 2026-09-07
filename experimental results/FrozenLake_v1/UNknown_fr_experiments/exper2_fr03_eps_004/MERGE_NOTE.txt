@@ -1,0 +1,32 @@
+XLSX MERGE NOTE
+===============
+Merged by  : C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental plots\plot_frozenlake_unknown.py
+Generated  : 2026-09-07 15:12:14
+Source dir : C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\FrozenLake_v1\UNknown_fr_experiments\exper2_fr03_eps_004\xlsx
+Merged     : 20 per-map-group xlsx files -> 1 file, 500 rows total
+Output file: C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\FrozenLake_v1\UNknown_fr_experiments\exper2_fr03_eps_004\exper2_fr03_eps_004_MERGED.xlsx
+
+The individual per-map-group files under xlsx/ are unchanged; this merged file is a
+single-file convenience copy of the same rows. Plots are built from these rows.
+
+Source files:
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_0-5.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_10-15.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_15-20.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_20-25.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_25-30.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_30-35.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_35-40.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_40-45.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_45-50.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_5-10.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_50-55.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_55-60.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_60-65.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_65-70.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_70-75.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_75-80.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_80-85.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_85-90.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_90-95.xlsx
+  - frozenlake_way2_PO_unknown_fr_epsilon_0_04_INJFR_0_3_MAPS_95-100.xlsx
