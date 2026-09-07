@@ -76,6 +76,30 @@ def evaluate(model, domain, noise_prob, seed, episodes=200):
             "avg_steps": float(np.mean(lens)), "episodes": episodes}
 
 
+def render_episode_gif(model, domain, noise_prob, seed, out_path, max_steps=200):
+    """Roll out ONE greedy episode with rgb_array frames and save an animated GIF (needs PIL)."""
+    env = gymnasium.make(domain, disable_env_checker=True, render_mode="rgb_array")
+    if noise_prob < 1.0:
+        env = SeededStochasticActionWrapper(env, prob=noise_prob)
+    env = ImgDirFlatWrapper(env)
+    obs, _ = env.reset(seed=seed + 55_555)
+    frames, done, trunc, steps = [], False, False, 0
+    while not (done or trunc) and steps < max_steps:
+        frames.append(env.render())
+        a, _ = model.predict(obs, deterministic=True)
+        obs, r, done, trunc, _ = env.step(int(a))
+        steps += 1
+    frames.append(env.render())
+    env.close()
+    try:
+        from PIL import Image
+        imgs = [Image.fromarray(f) for f in frames]
+        imgs[0].save(out_path, save_all=True, append_images=imgs[1:], duration=200, loop=0)
+        print(f"[render] saved {len(frames)}-frame GIF -> {out_path} (reached_goal={r>0})", flush=True)
+    except Exception as e:
+        print(f"[render] GIF save failed ({e}); frames={len(frames)}", flush=True)
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--domain", default="MiniGrid-Empty-16x16-v0")
@@ -87,6 +111,7 @@ def main():
     p.add_argument("--out_dir", default="runs/minigrid")
     p.add_argument("--n_steps", type=int, default=512)
     p.add_argument("--use_subproc", action="store_true", help="SubprocVecEnv (parallel cores)")
+    p.add_argument("--render_gif", action="store_true", help="save a greedy-episode GIF after training")
     args = p.parse_args()
 
     tag = f"{args.domain.replace('-','_')}_noise{args.noise_prob}_seed{args.seed}"
@@ -112,6 +137,10 @@ def main():
     print(line, flush=True)
     with open(os.path.join(out, "eval.txt"), "w") as f:
         f.write(line + "\n" + repr(res) + "\n")
+
+    if args.render_gif:
+        render_episode_gif(model, args.domain, args.noise_prob, args.seed,
+                           os.path.join(out, "greedy_episode.gif"))
 
 
 if __name__ == "__main__":
