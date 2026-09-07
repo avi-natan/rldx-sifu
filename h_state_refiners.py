@@ -24,9 +24,8 @@ def frozen_lake_refiner(raw_state):
     return refined_state
 
 def minigrid_refiner(raw_state):
-    # Approach A: the hardcoded navigation policy consumes the raw (col,row,dir)
-    # state directly, so the refiner is the identity. (Approach B, an image-obs
-    # policy, would instead reconstruct the egocentric view here.)
+    # The hardcoded navigation policy consumes the raw (col,row,dir) state directly,
+    # so the refiner is the identity.
     return raw_state
 
 

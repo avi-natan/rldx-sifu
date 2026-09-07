@@ -51,17 +51,23 @@ maps directly onto his likelihood ranking and unknown-fault-rate variant.
 
 - **FrozenLake** (stochastic) — working.
 - **Taxi-v4** (stochastic) — added, **not yet tested**.
-- **MiniGrid** (partially observed; branch `minigrid-integration`) — `MiniGrid-Empty-Random-6x6`
-  integrated for **approach A** (diagnoser runs on the FULL state `(col,row,dir)`, not the 7×7
-  egocentric view; MiniGrid's egocentric PO is only the policy's concern). End-to-end smoke test
-  passes reproducibly (`experiments_scripts/minigrid_empty_smoke.py` — true fault ranked #1).
-  Stochasticity via a custom `SeededStochasticActionWrapper` (MiniGrid's own
-  `StochasticActionWrapper` draws its coin from the GLOBAL numpy RNG → not seed-controlled →
-  do not use it). Policy is a deterministic greedy navigator (`MiniGridEmptyHardcodedPolicy`).
-  **Approach B** (diagnose from egocentric observations, needs belief/particle state) — TODO.
-  Install caveat: `pip install minigrid` pulls `pygame-ce`, which overwrites `pygame` and gets
-  blocked by Windows Application Control; fix = `pip uninstall -y pygame-ce pygame && pip install
-  pygame==2.6.1`.
+- **MiniGrid** (partially observed; branch `minigrid-integration`) — `MiniGrid-Empty-16x16`
+  (and `-Empty-Random-6x6`). **The diagnoser sees only the egocentric VIEW** (true partial
+  observability). `MiniGridSetStepWrapper.set_state` localizes the observed view to the states
+  consistent with it and SAMPLES one `(col,row,dir)` (position AND direction — a view often
+  reveals neither; up to 252 states share the empty-centre view), and the comparator compares
+  VIEWS — both are the DEFAULTS for MiniGrid domains, no mode flag. Stochasticity via a custom
+  `SeededStochasticActionWrapper` (MiniGrid's own `StochasticActionWrapper` draws its coin from
+  the GLOBAL numpy RNG → not seed-controlled → do not use it). Policy is a deterministic greedy
+  navigator (`MiniGridEmptyHardcodedPolicy`). Perf: `gen_obs` is stubbed + env-checker disabled +
+  view maps precomputed (~2.5x). Benchmark: `multiple_experiment_MiniGrid_fault_benchmark`
+  (settings mirror FrozenLake: eps 0.04, fr 0.3/0.5/0.8, vis 20-100, 10 candidate faults, only
+  the 9 real faults injected), cluster-split by flat work-unit (`--minigrid --mg_group/--mg_num_groups`,
+  `sb_minigrid.sbatch`, 1 core/task). Smoke test: `experiments_scripts/minigrid_empty_smoke.py`.
+  A first 100-instance cluster run is done (results ~ on par with fully-observed FrozenLake/Taxi).
+  Install caveat: `pip install minigrid` pulls `pygame-ce`, which overwrites `pygame`; on Windows
+  it's blocked by Application Control (fix = `pip uninstall -y pygame-ce pygame && pip install
+  pygame==2.6.1`); on Linux/cluster pygame-ce works fine.
 - **CliffWalking** — planned next.
 - Previous work used deterministic Gymnasium envs (Acrobot, CartPole, MountainCar, Taxi,
   LunarLander) — see the many `single_experiment_<Env>_<W|SN|SIF|SIFU…>` functions.

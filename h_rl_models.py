@@ -185,8 +185,8 @@ def load_trained_model(domain_name, ml_model_name, env=None):
         assert HARD_CODED_POLICY is not None, "FrozenLake policy not set"
         return FrozenLakeHardcodedPolicy(HARD_CODED_POLICY)
 
-    # MiniGrid Empty (approach A): a deterministic greedy navigator to the fixed goal
-    # at (width-2, height-2); size parsed from the domain name (e.g. 6x6 -> goal (4,4)).
+    # MiniGrid Empty: a deterministic greedy navigator to the fixed goal at
+    # (width-2, height-2); size parsed from the domain name (e.g. 6x6 -> goal (4,4)).
     if domain_name.startswith("MiniGrid"):
         import re
         m = re.search(r"(\d+)x(\d+)", domain_name)

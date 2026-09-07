@@ -8,9 +8,9 @@
 #SBATCH --gpus=0
 #SBATCH --mem=4G
 #SBATCH --time 00:30:00
-#SBATCH --output experiment_logs/minigrid_B/task-%A_%a.out
+#SBATCH --output experiment_logs/minigrid_PO/task-%A_%a.out
 
-# MiniGrid partial-observability (approach B) fault benchmark. Work = 100 instances x 5
+# MiniGrid partial-observability fault benchmark. Work = 100 instances x 5
 # visibilities x 3 fault rates = 1500 units (one diagnosis each, ~1 min). Split into 500
 # groups -> 3 units (~3 min) per task. One xlsx per task; merge afterwards.
 # (Check the cluster's MaxArraySize; if < 500, raise --mg_num_groups is not needed, just
@@ -28,11 +28,11 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 
-mkdir -p experiment_logs/minigrid_B
+mkdir -p experiment_logs/minigrid_PO
 
 python main.py \
     --minigrid \
     --mg_group ${SLURM_ARRAY_TASK_ID} \
     --mg_num_groups 500 \
     --epsilon 0.04 \
-    -o minigrid_B_INJFR_03-05-08_eps004
+    -o minigrid_PO_INJFR_03-05-08_eps004

@@ -168,60 +168,13 @@ class SeededStochasticActionWrapper(gymnasium.ActionWrapper):
         return int(self.np_random.integers(0, self.action_space.n))
 
 
-class MiniGridSetStepWrapper(gymnasium.Wrapper):
-    """Approach-A (full-state) wrapper for a MiniGrid Empty-room navigation env.
-
-    The raw state is the FULL MDP state for an Empty room: (agent_col, agent_row,
-    agent_dir). The grid (walls + goal) is fixed for a given env id, so restoring the
-    agent's position + direction fully restores the state — which is exactly what the
-    Monte-Carlo diagnoser needs from set_state. (Envs with keys/doors/carrying would
-    need those added to the snapshot.)
-
-    Note: MiniGrid is partially observed at the AGENT level (7x7 egocentric view), but
-    the DIAGNOSER runs on the full state here; the egocentric partiality is only the
-    policy's concern (approach B, which diagnoses from observations, is a separate path).
-    """
-    def __init__(self, env):
-        super().__init__(env)
-        self._grid_built = False
-        # BIG speedup: MiniGrid's step()/reset() build a 7x7 egocentric observation via
-        # gen_obs() and return it — but we never use it (we read agent_pos/agent_dir directly,
-        # and belief/comparator use precomputed view maps). gen_obs was ~75% of diagnosis time
-        # (called once per Monte-Carlo step). Stub it to a no-op; MiniGrid only returns its
-        # value, never uses it internally. (Env built with disable_env_checker=True so no
-        # wrapper validates the None observation.)
-        self.unwrapped.gen_obs = lambda *a, **k: None
-
-    def _raw(self):
-        u = self.unwrapped
-        pos = u.agent_pos
-        return (int(pos[0]), int(pos[1]), int(u.agent_dir))
-
-    def reset(self, seed=None, options=None):
-        # Full reset (rebuilds the grid). A "fast reset" that skips the rebuild was tried but
-        # CHANGED RESULTS: Empty-16x16 grid generation consumes np_random draws, so skipping it
-        # shifts the RNG stream and alters the Monte-Carlo outcomes. The big win is the gen_obs
-        # stub (see __init__) + disable_env_checker, which are RNG-neutral.
-        obs, info = self.env.reset(seed=seed, options=options)
-        return self._raw(), info
-
-    def set_state(self, raw_state):
-        u = self.unwrapped
-        u.agent_pos = (int(raw_state[0]), int(raw_state[1]))
-        u.agent_dir = int(raw_state[2])
-
-    def step(self, action):
-        obs, reward, terminated, truncated, info = self.env.step(int(action))
-        return self._raw(), reward, terminated, truncated, info
-
-
 _MINIGRID_VIEW_MAPS = {}
 
 def build_minigrid_view_maps(domain_name, render_seed=0):
     """Precompute, once per domain, the maps
         state2view : (col,row,dir) -> egocentric-view bytes
         view2states: view bytes    -> [ (col,row,dir), ... ]
-    by enumerating every interior state of the (fixed) grid and rendering it. The belief
+    by enumerating every interior state of the (fixed) grid and rendering it. The
     localization and the view comparator then run as O(1) dict lookups instead of calling
     gen_obs() hundreds of thousands of times in the Monte-Carlo hot loop (the real bottleneck).
     Cached by domain, so the diagnoser's per-call wrappers all share one build."""
@@ -245,36 +198,54 @@ def build_minigrid_view_maps(domain_name, render_seed=0):
     return maps
 
 
-class MiniGridBeliefSetStepWrapper(MiniGridSetStepWrapper):
-    """Approach B (partial observability): `set_state` does NOT restore the exact state.
+class MiniGridSetStepWrapper(gymnasium.Wrapper):
+    """Makes a MiniGrid Empty-room env diagnosable under PARTIAL OBSERVABILITY.
 
-    We only observe the agent's egocentric VIEW, and many states share a view (aliasing).
-    So given a state whose view we observed, this wrapper localizes — looks up ALL states
-    that produce the same view — and SAMPLES one of them (position AND direction) to start
-    the rollout from. The Monte-Carlo thus averages over "where am I / which way am I facing?"
-    Pair with the view comparator so the hit test also compares views, not exact states.
+    We only ever observe the agent's egocentric 7x7 VIEW, and many (col,row,dir) states
+    produce the SAME view (aliasing — up to 252 states in the empty centre of a 16x16 room).
+    So `set_state` does NOT restore a known true state: it localizes the observed view to the
+    set of states consistent with it and SAMPLES one (position AND direction) to roll forward
+    from. The Monte-Carlo diagnoser thus averages over "where am I / which way am I facing?".
+    Pair with the view comparator (the default for MiniGrid domains) so the MC hit test also
+    compares views. Sampling uses a per-reset seeded RNG, so it is reproducible and folds into
+    the diagnoser's per-trace seeding (see [[seeding-namespace-redesign]]).
 
-    Sampling uses a per-reset seeded RNG, so it is reproducible and folds into the
-    diagnoser's per-trace MC seeding (see [[seeding-namespace-redesign]]).
+    Perf: MiniGrid's step()/reset() build a 7x7 observation via gen_obs() and return it, but we
+    never use it (we read agent_pos/agent_dir directly and use precomputed view maps). gen_obs
+    was ~75% of diagnosis time (once per MC step), so it is stubbed to a no-op; the env is built
+    with disable_env_checker=True so nothing validates the stubbed None observation.
     """
     def __init__(self, env, domain_name):
         super().__init__(env)
-        # precomputed O(1) localization maps (shared, cached per domain)
+        self.unwrapped.gen_obs = lambda *a, **k: None   # perf: the observation is never used
         self._state2view, self._view_to_states = build_minigrid_view_maps(domain_name)
         self._belief_rng = random.Random(0)
 
+    def _raw(self):
+        u = self.unwrapped
+        pos = u.agent_pos
+        return (int(pos[0]), int(pos[1]), int(u.agent_dir))
+
     def reset(self, seed=None, options=None):
-        raw, info = super().reset(seed=seed, options=options)
+        # Full reset (rebuilds the grid). A "fast reset" skipping the rebuild was tried and
+        # reverted: Empty-16x16 grid generation consumes np_random draws, so skipping it shifts
+        # the RNG stream and changes results.
+        obs, info = self.env.reset(seed=seed, options=options)
         self._belief_rng = random.Random(seed if seed is not None else 0)
-        return raw, info
+        return self._raw(), info
 
     def set_state(self, raw_state):
+        # localize the observed view -> sample a consistent (col,row,dir) to roll forward from
         key = (int(raw_state[0]), int(raw_state[1]), int(raw_state[2]))
         vb = self._state2view.get(key)
         candidates = self._view_to_states.get(vb, [key])
-        sampled = self._belief_rng.choice(candidates)   # sample a consistent (col,row,dir)
+        sampled = self._belief_rng.choice(candidates)
         u = self.unwrapped
         u.agent_pos = (int(sampled[0]), int(sampled[1])); u.agent_dir = int(sampled[2])
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(int(action))
+        return self._raw(), reward, terminated, truncated, info
 
 
 wrappers = {
@@ -284,8 +255,7 @@ wrappers = {
     "Taxi_v3": TaxiSetStepWrapper,
     "Taxi_v4": TaxiV4SetStepWrapper,
     "FrozenLake_v1": FrozenLakeSetStepWrapper,
-    "MiniGrid_Empty_Random_6x6_v0": MiniGridSetStepWrapper,
-    "MiniGrid_Empty_16x16_v0": MiniGridSetStepWrapper,
+    # MiniGrid domains are constructed directly in make_wrapped_env (they need domain_name).
 }
 
 FROZENLAKE_DESC = [
@@ -317,13 +287,6 @@ DOMAIN_KWARGS = {
 # FrozenLake slippery / Taxi rainy.
 MINIGRID_ACTION_PROB = 0.7
 
-# Approach selector for MiniGrid. False (default) = approach A: set_state restores the exact
-# state. True = approach B: set_state samples a state consistent with the observed view
-# (MiniGridBeliefSetStepWrapper). B mode should be paired with the view comparator. Opt in by
-# setting h_wrappers.MINIGRID_BELIEF_MODE = True before building the env / running the diagnoser.
-MINIGRID_BELIEF_MODE = False
-
-
 def make_wrapped_env(domain_name, render_mode):
     kwargs = DOMAIN_KWARGS.get(domain_name, {})
     is_minigrid = domain_name.startswith("MiniGrid")
@@ -340,16 +303,12 @@ def make_wrapped_env(domain_name, render_mode):
             disable_env_checker=True,
             **kwargs
         )
-    else:
-        base_env = used_gym.make(
-            domain_name.replace('_', '-'),
-            render_mode=render_mode,
-            **kwargs
-        )
-
-    if is_minigrid:
         base_env = SeededStochasticActionWrapper(base_env, prob=MINIGRID_ACTION_PROB)
-        if MINIGRID_BELIEF_MODE:
-            return MiniGridBeliefSetStepWrapper(base_env, domain_name)  # approach B (localize+sample)
+        return MiniGridSetStepWrapper(base_env, domain_name)  # localize view + sample state
 
+    base_env = used_gym.make(
+        domain_name.replace('_', '-'),
+        render_mode=render_mode,
+        **kwargs
+    )
     return wrappers[domain_name](base_env)

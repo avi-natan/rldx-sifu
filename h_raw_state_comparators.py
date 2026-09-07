@@ -20,19 +20,14 @@ def frozen_lake_compare(raw_state1, raw_state2):
     s2 = int(raw_state2)
     return s1 == s2
 
-def minigrid_compare(raw_state1, raw_state2):
-    # raw state is (agent_col, agent_row, agent_dir); exact tuple equality (approach A)
-    return tuple(raw_state1) == tuple(raw_state2)
-
-
 def make_minigrid_view_comparator(domain_name, render_seed=0):
-    """Approach B0/B: compare states by the EGOCENTRIC VIEW they produce, not by the
-    exact (col,row,dir). Two states that look identical to the agent count as equal.
+    """Compare two MiniGrid states by the EGOCENTRIC VIEW they produce, not by the exact
+    (col,row,dir): two states that look identical to the agent count as equal. This is the
+    diagnosis signal under partial observability — the diagnoser only sees views.
 
     Uses the precomputed state->view map (built once per domain), so each comparison is an
     O(1) dict lookup rather than a gen_obs() render — critical because the Monte-Carlo hit
-    test runs this hundreds of thousands of times. Swap it into `comparators[domain_name]`
-    for B0/B mode; the exact `minigrid_compare` stays the default (approach A).
+    test runs this hundreds of thousands of times.
     """
     from h_wrappers import build_minigrid_view_maps
     state2view, _ = build_minigrid_view_maps(domain_name, render_seed=render_seed)
@@ -45,6 +40,16 @@ def make_minigrid_view_comparator(domain_name, render_seed=0):
     return view_compare
 
 
+def _lazy_minigrid_view_comparator(domain_name):
+    """A comparators[domain] entry that builds the view comparator on first use (so importing
+    this module doesn't build a MiniGrid env), then caches it."""
+    box = {}
+    def cmp(raw_state1, raw_state2):
+        fn = box.get("fn") or box.setdefault("fn", make_minigrid_view_comparator(domain_name))
+        return fn(raw_state1, raw_state2)
+    return cmp
+
+
 comparators = {
     "Acrobot_v1": acrobot_compare,
     "CartPole_v1": cart_pole_compare,
@@ -52,6 +57,7 @@ comparators = {
     "Taxi_v3": taxi_compare,
     "Taxi_v4": taxi_compare,
     "FrozenLake_v1": frozen_lake_compare,
-    "MiniGrid_Empty_Random_6x6_v0": minigrid_compare,
-    "MiniGrid_Empty_16x16_v0": minigrid_compare,
+    # MiniGrid is partially observed -> compare by egocentric VIEW (built lazily on first use).
+    "MiniGrid_Empty_Random_6x6_v0": _lazy_minigrid_view_comparator("MiniGrid_Empty_Random_6x6_v0"),
+    "MiniGrid_Empty_16x16_v0": _lazy_minigrid_view_comparator("MiniGrid_Empty_16x16_v0"),
 }

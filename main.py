@@ -127,7 +127,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--minigrid",
         action="store_true",
-        help="Run the MiniGrid partial-observability (approach B) fault benchmark "
+        help="Run the MiniGrid partial-observability fault benchmark "
              "instead of Taxi/FrozenLake."
     )
 

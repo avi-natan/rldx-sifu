@@ -1617,27 +1617,25 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
                                                  num_instances=100, run_folder=None,
                                                  unit_start=0, unit_end=None,
                                                  domain_name="MiniGrid_Empty_16x16_v0"):
-    """MiniGrid PARTIAL-OBSERVABILITY (approach B) fault-diagnosis benchmark.
+    """MiniGrid partial-observability fault-diagnosis benchmark.
 
-    Approach B: the diagnoser sees only egocentric VIEWS. set_state localizes the observed
-    view to the set of consistent (col,row,dir) states and SAMPLES one (belief); the MC hit
-    test compares views. Settings mirror the FrozenLake way2 benchmark so the numbers are
-    comparable to that fully-observed baseline: same epsilon, same fault-rate x visibility
-    sweep (20/40/60/80/100).
+    MiniGrid is partially observed: the diagnoser sees only egocentric VIEWS. The wrapper's
+    set_state localizes the observed view to the set of consistent (col,row,dir) states and
+    SAMPLES one, and the comparator compares views — both are the defaults for MiniGrid domains
+    (see h_wrappers.MiniGridSetStepWrapper / h_raw_state_comparators). Settings mirror the
+    FrozenLake way2 benchmark so the numbers are comparable to that fully-observed baseline:
+    same epsilon, same fault-rate x visibility sweep (20/40/60/80/100).
 
     Splitting is at the FLAT WORK-UNIT level: the work is the cartesian product
     (instance x visibility x fault_rate), num_instances*5*len(fault_rate_list) units total
     (default 100*5*3 = 1500). unit_start/unit_end select a half-open window of that flat list,
     so a SLURM job array can make each task tiny (one diagnosis ~1 min) instead of a whole
-    instance (15 diagnoses). Each diagnosis is ~1 min, so pick the group count for the task
-    length you want. The window is encoded in the filename so tasks never overwrite; merge after.
+    instance (15 diagnoses). The window is encoded in the filename so tasks never overwrite;
+    merge after.
 
-    Instance i (seed 10+i) injects one fault from MINIGRID_FAULT_SPECS (rotated); the full spec
-    set is the candidate list.
+    Instance i (seed 10+i) injects one REAL fault from MINIGRID_INJECTABLE_SPECS (rotated);
+    the full MINIGRID_FAULT_SPECS set (incl. identity) is the candidate list the diagnoser ranks.
     """
-    import h_wrappers
-    import h_raw_state_comparators as C
-
     records = []
     skipped = 0
     fault_rate_list = list(fault_rate_list)
@@ -1664,61 +1662,49 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
     unit_end = min(unit_end, total_units)
     my_units = UNITS[unit_start:unit_end]
 
-    print(f"Running MiniGrid PO diagnosis (approach B, {fr_token}) | domain={domain_name} | "
+    print(f"Running MiniGrid PO diagnosis ({fr_token}) | domain={domain_name} | "
           f"epsilon={epsilon} | injected_fault_rate={fault_rate_list} | "
           f"num_instances={num_instances} | total_units={total_units} | "
           f"unit_window=[{unit_start},{unit_end}) ({len(my_units)} units)\n\n")
 
-    # --- Approach B mode: belief set_state + view comparison (restore on exit) ---
-    prev_mode = h_wrappers.MINIGRID_BELIEF_MODE
-    prev_cmp = C.comparators.get(domain_name)
-    h_wrappers.MINIGRID_BELIEF_MODE = True
-    C.comparators[domain_name] = C.make_minigrid_view_comparator(domain_name)
+    for u_idx, (i, percent_visible_states, fault_rate) in enumerate(my_units, start=unit_start):
+        instance_seed = 10 + i
+        # inject only a REAL fault (never identity); identity stays in the candidate set `specs`
+        execution_fault_mode_name = MINIGRID_INJECTABLE_SPECS[i % len(MINIGRID_INJECTABLE_SPECS)]
+        dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        print(f'==== {dt_string}: UNIT {u_idx} (inst {i+1}, vis {percent_visible_states}, '
+              f'fr {fault_rate}, inject {execution_fault_mode_name}) ====')
 
-    try:
-        for u_idx, (i, percent_visible_states, fault_rate) in enumerate(my_units, start=unit_start):
-            instance_seed = 10 + i
-            # inject only a REAL fault (never identity); identity stays in the candidate set `specs`
-            execution_fault_mode_name = MINIGRID_INJECTABLE_SPECS[i % len(MINIGRID_INJECTABLE_SPECS)]
-            dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-            print(f'==== {dt_string}: UNIT {u_idx} (inst {i+1}, vis {percent_visible_states}, '
-                  f'fr {fault_rate}, inject {execution_fault_mode_name}) ====')
+        output = run_NON_DETERMINSTIC_single_experiment_PO(
+            domain_name=domain_name,
+            ml_model_name=ml_model_name,
+            render_mode=render_mode,
+            max_exec_len=max_exec_len,
+            debug_print=debug_print,
+            execution_fault_mode_name=execution_fault_mode_name,
+            instance_seed=instance_seed * SEED_BLOCK,  # block base; run_PO derives offsets
+            fault_probability=fault_rate,
+            percent_visible_states=percent_visible_states,
+            possible_fault_mode_names=specs,
+            num_candidate_fault_modes=len(specs),
+            epsilon=epsilon,
+            unknown_fault_rate=unknown_fault_rate,
+            fault_rate_candidates=fault_rate_candidates,
+            fixed_candidate_fault_modes=specs,
+        )
+        if not output:
+            skipped += 1
+            continue
 
-            output = run_NON_DETERMINSTIC_single_experiment_PO(
-                domain_name=domain_name,
-                ml_model_name=ml_model_name,
-                render_mode=render_mode,
-                max_exec_len=max_exec_len,
-                debug_print=debug_print,
-                execution_fault_mode_name=execution_fault_mode_name,
-                instance_seed=instance_seed * SEED_BLOCK,  # block base; run_PO derives offsets
-                fault_probability=fault_rate,
-                percent_visible_states=percent_visible_states,
-                possible_fault_mode_names=specs,
-                num_candidate_fault_modes=len(specs),
-                epsilon=epsilon,
-                unknown_fault_rate=unknown_fault_rate,
-                fault_rate_candidates=fault_rate_candidates,
-                fixed_candidate_fault_modes=specs,
-            )
-            if not output:
-                skipped += 1
-                continue
-
-            output["epsilon"] = epsilon
-            output["experiment_num"] = i + 1
-            output["real_fault_prob"] = fault_rate
-            output["map_desc"] = f"{domain_name}_seed_{instance_seed}"
-            output["hardcoded_policy"] = f"{domain_name}_{ml_model_name}"
-            output["domain_name"] = domain_name
-            output["benchmark_way"] = "minigrid_B"
-            output["execution_fault"] = execution_fault_mode_name
-            records.append(output)
-    finally:
-        # restore defaults so we never leave the process in B mode / view-compare
-        h_wrappers.MINIGRID_BELIEF_MODE = prev_mode
-        if prev_cmp is not None:
-            C.comparators[domain_name] = prev_cmp
+        output["epsilon"] = epsilon
+        output["experiment_num"] = i + 1
+        output["real_fault_prob"] = fault_rate
+        output["map_desc"] = f"{domain_name}_seed_{instance_seed}"
+        output["hardcoded_policy"] = f"{domain_name}_{ml_model_name}"
+        output["domain_name"] = domain_name
+        output["benchmark_way"] = "minigrid_PO"
+        output["execution_fault"] = execution_fault_mode_name
+        records.append(output)
 
     if not records:
         print("No successful MiniGrid experiments produced (all trajectories failed).")
@@ -1728,7 +1714,7 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
 
     file_suffix = str(epsilon).replace(".", "_")
     injfr_token = "-".join(str(fr).replace(".", "_") for fr in fault_rate_list)
-    file_path = (f"minigrid_B_PO_{fr_token}_epsilon_{file_suffix}"
+    file_path = (f"minigrid_PO_{fr_token}_epsilon_{file_suffix}"
                  f"_INJFR_{injfr_token}_UNITS_{unit_start}-{unit_end}")
     output_dir = domain_results_dir(domain_name, run_folder)
     exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)
