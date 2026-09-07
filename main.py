@@ -218,22 +218,24 @@ if __name__ == '__main__':
             )
         elif args.minigrid:
             MG_INSTANCES = 100
-            # --mg_group present -> run only this task's slice of the instances (job-array split).
-            inst_start, inst_end = 0, None
+            # Work units = instances x 5 visibilities x 3 fault rates (one diagnosis each,
+            # ~1 min). --mg_group present -> run only this task's contiguous slice of them.
+            MG_TOTAL_UNITS = MG_INSTANCES * 5 * 3
+            unit_start, unit_end = 0, None
             if args.mg_group is not None:
-                group_size = MG_INSTANCES // args.mg_num_groups
-                inst_start = args.mg_group * group_size
-                inst_end = (inst_start + group_size
-                            if args.mg_group < args.mg_num_groups - 1 else MG_INSTANCES)
+                group_size = MG_TOTAL_UNITS // args.mg_num_groups
+                unit_start = args.mg_group * group_size
+                unit_end = (unit_start + group_size
+                            if args.mg_group < args.mg_num_groups - 1 else MG_TOTAL_UNITS)
                 print(f"MiniGrid group {args.mg_group}/{args.mg_num_groups} "
-                      f"-> instances [{inst_start}, {inst_end})")
+                      f"-> work-units [{unit_start}, {unit_end}) of {MG_TOTAL_UNITS}")
             multiple_experiment_MiniGrid_fault_benchmark(
                 epsilon=args.epsilon,
                 unknown_fault_rate=args.unknown_fault_rate,
                 num_instances=MG_INSTANCES,
                 run_folder=args.run_folder,
-                inst_start=inst_start,
-                inst_end=inst_end,
+                unit_start=unit_start,
+                unit_end=unit_end,
             )
         else:
             # Known-rate: default. Unknown-rate: pass -ufr on the CLI (10x more MC sims, ~10x slower).

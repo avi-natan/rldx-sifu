@@ -1610,7 +1610,7 @@ MINIGRID_FAULT_SPECS = [
 def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rate=False,
                                                  fault_rate_list=(0.3, 0.5, 0.8),
                                                  num_instances=100, run_folder=None,
-                                                 inst_start=0, inst_end=None,
+                                                 unit_start=0, unit_end=None,
                                                  domain_name="MiniGrid_Empty_16x16_v0"):
     """MiniGrid PARTIAL-OBSERVABILITY (approach B) fault-diagnosis benchmark.
 
@@ -1618,11 +1618,17 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
     view to the set of consistent (col,row,dir) states and SAMPLES one (belief); the MC hit
     test compares views. Settings mirror the FrozenLake way2 benchmark so the numbers are
     comparable to that fully-observed baseline: same epsilon, same fault-rate x visibility
-    sweep (20/40/60/80/100), one xlsx per call.
+    sweep (20/40/60/80/100).
 
-    Instance i (seed 10+i) injects one fault from MINIGRID_FAULT_SPECS (rotated); the full
-    spec set is the candidate list. inst_start/inst_end give a half-open instance window for
-    SLURM job-array splitting, encoded into the filename so groups never overwrite.
+    Splitting is at the FLAT WORK-UNIT level: the work is the cartesian product
+    (instance x visibility x fault_rate), num_instances*5*len(fault_rate_list) units total
+    (default 100*5*3 = 1500). unit_start/unit_end select a half-open window of that flat list,
+    so a SLURM job array can make each task tiny (one diagnosis ~1 min) instead of a whole
+    instance (15 diagnoses). Each diagnosis is ~1 min, so pick the group count for the task
+    length you want. The window is encoded in the filename so tasks never overwrite; merge after.
+
+    Instance i (seed 10+i) injects one fault from MINIGRID_FAULT_SPECS (rotated); the full spec
+    set is the candidate list.
     """
     import h_wrappers
     import h_raw_state_comparators as C
@@ -1633,12 +1639,6 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
     fault_rate_candidates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0] if unknown_fault_rate else None
     fr_token = "unknown_fr" if unknown_fault_rate else "known_fr"
 
-    NUM = num_instances
-    if inst_end is None:
-        inst_end = NUM
-    inst_start = max(0, inst_start)
-    inst_end = min(inst_end, NUM)
-
     ml_model_name = "PPO"
     render_mode = "rgb_array"
     max_exec_len = 80          # keep trajectories < MAX_STATES (200); plenty for a 16x16 room
@@ -1646,9 +1646,23 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
     specs = MINIGRID_FAULT_SPECS
     percent_visible_states_list = [20, 40, 60, 80, 100]
 
+    # Flat work-unit list (instance, visibility, fault_rate). Grouped by instance so a task's
+    # units share a trajectory profile, but any contiguous window is a valid task.
+    UNITS = [(i, vis, fr)
+             for i in range(num_instances)
+             for vis in percent_visible_states_list
+             for fr in fault_rate_list]
+    total_units = len(UNITS)
+    if unit_end is None:
+        unit_end = total_units
+    unit_start = max(0, unit_start)
+    unit_end = min(unit_end, total_units)
+    my_units = UNITS[unit_start:unit_end]
+
     print(f"Running MiniGrid PO diagnosis (approach B, {fr_token}) | domain={domain_name} | "
           f"epsilon={epsilon} | injected_fault_rate={fault_rate_list} | "
-          f"num_instances={NUM} | inst_window=[{inst_start},{inst_end})\n\n")
+          f"num_instances={num_instances} | total_units={total_units} | "
+          f"unit_window=[{unit_start},{unit_end}) ({len(my_units)} units)\n\n")
 
     # --- Approach B mode: belief set_state + view comparison (restore on exit) ---
     prev_mode = h_wrappers.MINIGRID_BELIEF_MODE
@@ -1657,47 +1671,43 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
     C.comparators[domain_name] = C.make_minigrid_view_comparator(domain_name)
 
     try:
-        for i in range(inst_start, inst_end):
+        for u_idx, (i, percent_visible_states, fault_rate) in enumerate(my_units, start=unit_start):
             instance_seed = 10 + i
             execution_fault_mode_name = specs[i % len(specs)]
             dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-            print(f'============ {dt_string}: INSTANCE {i+1}/{NUM} '
-                  f'(inject {execution_fault_mode_name}) START ============')
+            print(f'==== {dt_string}: UNIT {u_idx} (inst {i+1}, vis {percent_visible_states}, '
+                  f'fr {fault_rate}, inject {execution_fault_mode_name}) ====')
 
-            for percent_visible_states in percent_visible_states_list:
-                for fault_rate in fault_rate_list:
-                    output = run_NON_DETERMINSTIC_single_experiment_PO(
-                        domain_name=domain_name,
-                        ml_model_name=ml_model_name,
-                        render_mode=render_mode,
-                        max_exec_len=max_exec_len,
-                        debug_print=debug_print,
-                        execution_fault_mode_name=execution_fault_mode_name,
-                        instance_seed=instance_seed * SEED_BLOCK,  # block base; run_PO derives offsets
-                        fault_probability=fault_rate,
-                        percent_visible_states=percent_visible_states,
-                        possible_fault_mode_names=specs,
-                        num_candidate_fault_modes=len(specs),
-                        epsilon=epsilon,
-                        unknown_fault_rate=unknown_fault_rate,
-                        fault_rate_candidates=fault_rate_candidates,
-                        fixed_candidate_fault_modes=specs,
-                    )
-                    if not output:
-                        skipped += 1
-                        continue
+            output = run_NON_DETERMINSTIC_single_experiment_PO(
+                domain_name=domain_name,
+                ml_model_name=ml_model_name,
+                render_mode=render_mode,
+                max_exec_len=max_exec_len,
+                debug_print=debug_print,
+                execution_fault_mode_name=execution_fault_mode_name,
+                instance_seed=instance_seed * SEED_BLOCK,  # block base; run_PO derives offsets
+                fault_probability=fault_rate,
+                percent_visible_states=percent_visible_states,
+                possible_fault_mode_names=specs,
+                num_candidate_fault_modes=len(specs),
+                epsilon=epsilon,
+                unknown_fault_rate=unknown_fault_rate,
+                fault_rate_candidates=fault_rate_candidates,
+                fixed_candidate_fault_modes=specs,
+            )
+            if not output:
+                skipped += 1
+                continue
 
-                    output["epsilon"] = epsilon
-                    output["experiment_num"] = i + 1
-                    output["real_fault_prob"] = fault_rate
-                    output["map_desc"] = f"{domain_name}_seed_{instance_seed}"
-                    output["hardcoded_policy"] = f"{domain_name}_{ml_model_name}"
-                    output["domain_name"] = domain_name
-                    output["benchmark_way"] = "minigrid_B"
-                    output["execution_fault"] = execution_fault_mode_name
-                    records.append(output)
-
-            print(f'============ INSTANCE {i+1}/{NUM} END ============')
+            output["epsilon"] = epsilon
+            output["experiment_num"] = i + 1
+            output["real_fault_prob"] = fault_rate
+            output["map_desc"] = f"{domain_name}_seed_{instance_seed}"
+            output["hardcoded_policy"] = f"{domain_name}_{ml_model_name}"
+            output["domain_name"] = domain_name
+            output["benchmark_way"] = "minigrid_B"
+            output["execution_fault"] = execution_fault_mode_name
+            records.append(output)
     finally:
         # restore defaults so we never leave the process in B mode / view-compare
         h_wrappers.MINIGRID_BELIEF_MODE = prev_mode
@@ -1713,7 +1723,7 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
     file_suffix = str(epsilon).replace(".", "_")
     injfr_token = "-".join(str(fr).replace(".", "_") for fr in fault_rate_list)
     file_path = (f"minigrid_B_PO_{fr_token}_epsilon_{file_suffix}"
-                 f"_INJFR_{injfr_token}_INST_{inst_start}-{inst_end}")
+                 f"_INJFR_{injfr_token}_UNITS_{unit_start}-{unit_end}")
     output_dir = domain_results_dir(domain_name, run_folder)
     exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)
     print(f"file was written at: {output_dir}/{file_path}.xlsx")
