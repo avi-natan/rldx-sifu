@@ -115,6 +115,24 @@ def plot_per_fault(df, title, out_path):
     return out_path
 
 
+def plot_pooled(df, x_col, x_label, title, out_path, label="all fault rates pooled"):
+    """Single aggregate line: avg real-fault rank (+/- SEM) vs x_col, POOLED over everything else."""
+    xs = sorted(df[x_col].dropna().unique())
+    ys, sems = [], []
+    for x in xs:
+        m, se = _mean_sem(df[df[x_col] == x][RANK_COL]); ys.append(m); sems.append(se)
+    plt.figure(figsize=(7.5, 4.8))
+    plt.errorbar(xs, ys, yerr=sems, fmt="o-", capsize=3, markersize=7, linewidth=2.2,
+                 color="#1f77b4", label=label)
+    plt.axhline(RANDOM_RANK, ls="--", color="grey", lw=1, label=f"random ({RANDOM_RANK:g})")
+    plt.xticks(xs); plt.xlabel(x_label)
+    plt.ylabel("Avg real-fault rank  (1 = best, 10 = worst)"); plt.ylim(1, N_CANDIDATES)
+    plt.title(title); plt.grid(True, alpha=0.3); plt.legend(fontsize=9)
+    plt.tight_layout(); plt.savefig(out_path, dpi=300, bbox_inches="tight"); plt.close()
+    print(f"  saved {out_path}")
+    return out_path
+
+
 def main():
     df = load()
     os.makedirs(PLOTS_DIR, exist_ok=True)
@@ -139,6 +157,18 @@ def main():
     created.append(plot_per_fault(
         df, title=f"MiniGrid PO: avg rank per fault (label = L,R,F -> mapping)\n{suffix}",
         out_path=os.path.join(PLOTS_DIR, f"{tag}_rank_per_fault.png")))
+
+    # --- pooled/aggregate curves: all fault rates combined into a single line ---
+    created.append(plot_pooled(
+        df, x_col=VIS_COL, x_label="Visibility (% observed states)",
+        title=f"MiniGrid PO: rank vs visibility (ALL fault rates combined)\n{suffix}",
+        out_path=os.path.join(PLOTS_DIR, f"{tag}_rank_vs_visibility_pooled.png")))
+
+    created.append(plot_pooled(
+        df, x_col=FR_COL, x_label="Fault rate",
+        title=f"MiniGrid PO: rank vs fault rate (ALL visibilities combined)\n{suffix}",
+        out_path=os.path.join(PLOTS_DIR, f"{tag}_rank_vs_faultrate_pooled.png"),
+        label="all visibilities pooled"))
 
     write_plot_provenance(PLOTS_DIR, created, input_sources=[os.path.join(RESULTS_DIR, "xlsx")])
     print("wrote:", *[os.path.basename(c) for c in created])
