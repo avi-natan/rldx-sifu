@@ -116,7 +116,10 @@ def main():
     p.add_argument("--learning_rate", type=float, default=2.5e-4)
     p.add_argument("--net_width", type=int, default=64, help="MLP hidden width (both layers)")
     p.add_argument("--use_subproc", action="store_true", help="SubprocVecEnv (parallel cores)")
-    p.add_argument("--device", default="auto", help="PPO device: auto|cpu|cuda (MLP policy is usually fastest on cpu)")
+    p.add_argument("--device", default="cpu",
+                   help="PPO device. Default cpu: SB3 FORCES MlpPolicy to CPU anyway (a GPU-vs-CPU "
+                        "bench showed requested=cuda -> resolved=cpu, zero GPU use); the only speed "
+                        "lever is CPU cores/node. Kept as a flag for CnnPolicy experiments.")
     p.add_argument("--render_gif", action="store_true", help="save a greedy-episode GIF after training")
     args = p.parse_args()
 

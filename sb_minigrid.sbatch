@@ -39,6 +39,7 @@ export NUMEXPR_NUM_THREADS=1
 
 MG_NOISE=${MG_NOISE:-0.7}
 MG_FR=${MG_FR:-0.5}
+MG_DOMAIN=${MG_DOMAIN:-empty}      # 'empty' or 'crossing'; results land under that domain's own dir
 NOISE_TAG=$(echo "$MG_NOISE" | tr '.' '_')
 UFR_FLAG=""; UFR_TAG=""; FR_SUBDIR="known"
 if [ "${MG_UFR:-0}" = "1" ]; then UFR_FLAG="-ufr"; UFR_TAG="_ufr"; FR_SUBDIR="unknown"; fi
@@ -47,6 +48,7 @@ mkdir -p experiment_logs/minigrid_PO
 
 python main.py \
     --minigrid \
+    --mg_domain ${MG_DOMAIN} \
     --mg_group ${SLURM_ARRAY_TASK_ID} \
     --mg_num_groups 390 \
     --mg_noise ${MG_NOISE} \

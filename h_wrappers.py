@@ -218,6 +218,7 @@ MINIGRID_PER_SEED_LAYOUT = {"MiniGrid_SimpleCrossing_S11N2_v0"}
 
 _MINIGRID_LAYOUT_VIEW_MAPS = {}   # (domain, layout_seed) -> (state2view, view2states)
 _MINIGRID_ACTIVE_MAPS = {}        # domain -> the CURRENT instance's state2view (per-seed-layout only)
+_MINIGRID_ACTIVE_LAYOUT_SEED = {} # domain -> the CURRENT instance's layout seed (per-seed-layout only)
 
 def build_minigrid_view_maps_for_layout(domain_name, layout_seed):
     """Wall-AWARE view maps for ONE specific per-seed layout (e.g. SimpleCrossing). Enumerates only
@@ -300,6 +301,7 @@ class MiniGridSetStepWrapper(gymnasium.Wrapper):
                 self._state2view, self._view_to_states = build_minigrid_view_maps_for_layout(
                     self._domain_name, self._layout_seed)
                 _MINIGRID_ACTIVE_MAPS[self._domain_name] = self._state2view  # the comparator reads this
+                _MINIGRID_ACTIVE_LAYOUT_SEED[self._domain_name] = self._layout_seed  # the policy tabulates for this
             obs, info = self.env.reset(seed=self._layout_seed, options=options)  # SAME layout every time
             self.unwrapped.np_random, _ = seeding.np_random(int(seed))          # noise <- per-call seed
             self._belief_rng = random.Random(seed)                              # belief <- per-call seed

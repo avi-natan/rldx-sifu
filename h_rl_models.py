@@ -200,6 +200,58 @@ def build_minigrid_tabulated_policy(model_path, ml_model_name, domain_name):
     return policy
 
 
+# cache the loaded SB3 net per model path (shared by the per-layout policy across instances)
+_MINIGRID_NET_CACHE = {}
+
+def _load_minigrid_net(model_path, ml_model_name):
+    if model_path not in _MINIGRID_NET_CACHE:
+        import gymnasium, minigrid  # noqa: F401
+        _MINIGRID_NET_CACHE[model_path] = models[ml_model_name].load(model_path)
+    return _MINIGRID_NET_CACHE[model_path]
+
+
+class MiniGridPerLayoutTabulatedPolicy:
+    """Per-seed-layout MiniGrid (e.g. SimpleCrossing): the layout — and therefore the greedy action
+    at each (col,row,dir) — DIFFERS per instance, so a single global table is wrong. Instead we hold
+    the loaded obs-input net and tabulate it LAZILY per layout: the first time we're asked for an
+    action while a given layout is active, we tabulate the net over exactly that layout's FREE states
+    (wall cells are never states) and cache it, keyed by the layout seed. All later O(1) lookups.
+
+    The active layout is whatever the wrapper fixed on its first reset (h_wrappers publishes it via
+    _MINIGRID_ACTIVE_LAYOUT_SEED); both the trajectory env and the diagnoser reset from the same
+    instance_seed, so they share one layout during a diagnosis. Tabulation reuses the wrapper's
+    already-built view maps, which store each free state's egocentric image — so the exact
+    observation the net consumes is rebuilt without re-rendering the env. Behaviourally identical to
+    model.predict(obs, deterministic=True) on that layout; aliased states get the same action.
+    """
+    def __init__(self, model, domain_name):
+        self.model = model
+        self.domain_name = domain_name
+        self._tables = {}   # layout_seed -> {(col,row,dir): action}
+
+    def _table_for_active_layout(self):
+        from h_wrappers import _MINIGRID_ACTIVE_LAYOUT_SEED, build_minigrid_view_maps_for_layout
+        layout_seed = _MINIGRID_ACTIVE_LAYOUT_SEED.get(self.domain_name)
+        if layout_seed is None:
+            raise RuntimeError(f"No active {self.domain_name} layout; the env must be reset before "
+                               f"the policy is queried (per-seed-layout tabulation needs the layout).")
+        if layout_seed not in self._tables:
+            state2view, _ = build_minigrid_view_maps_for_layout(self.domain_name, layout_seed)
+            table = {}
+            for (x, y, d), (img_bytes, direction) in state2view.items():
+                img = np.frombuffer(img_bytes, dtype=np.uint8).reshape(7, 7, 3)
+                vec = minigrid_obs_vector(img, direction)
+                table[(x, y, d)] = int(self.model.predict(vec, deterministic=True)[0])
+            self._tables[layout_seed] = table
+            print(f"[MiniGridPerLayoutTabulatedPolicy] tabulated {len(table)} states "
+                  f"for {self.domain_name} layout_seed={layout_seed}")
+        return self._tables[layout_seed]
+
+    def predict(self, obs, deterministic=True):
+        key = (int(obs[0]), int(obs[1]), int(obs[2]))
+        return self._table_for_active_layout().get(key, 2), None   # default FORWARD (should not miss)
+
+
 class TaxiHardcodedPolicy:
     """Deterministic policy as a {state: action} lookup table.
 
@@ -250,9 +302,13 @@ def load_trained_model(domain_name, ml_model_name, env=None):
     # is diagnosed under the stochasticity it learned. (The MiniGridEmptyHardcodedPolicy greedy
     # navigator above is kept for reference but no longer used.)
     if domain_name.startswith("MiniGrid"):
-        from h_wrappers import MINIGRID_ACTION_PROB
+        from h_wrappers import MINIGRID_ACTION_PROB, MINIGRID_PER_SEED_LAYOUT
         models_dir = f"environments/{domain_name}/models/{ml_model_name}"
         model_path = f"{models_dir}/{domain_name}__{ml_model_name}__noise{MINIGRID_ACTION_PROB}.zip"
+        if domain_name in MINIGRID_PER_SEED_LAYOUT:
+            # Layout (and thus the greedy action per state) varies per instance -> tabulate lazily
+            # per layout, keyed by the active layout seed the wrapper publishes on reset.
+            return MiniGridPerLayoutTabulatedPolicy(_load_minigrid_net(model_path, ml_model_name), domain_name)
         return build_minigrid_tabulated_policy(model_path, ml_model_name, domain_name)
 
     models_dir = f"environments/{domain_name}/models/{ml_model_name}"

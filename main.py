@@ -166,6 +166,15 @@ if __name__ == '__main__':
              "(the benchmark uses one fault_rate per run; sweep it across runs)."
     )
 
+    parser.add_argument(
+        "--mg_domain",
+        default="empty",
+        choices=["empty", "crossing"],
+        help="Which MiniGrid domain to benchmark: 'empty' (MiniGrid-Empty-16x16, fixed layout) or "
+             "'crossing' (MiniGrid-SimpleCrossing-S11N2, per-seed wall layouts). Both reuse the same "
+             "26-fault benchmark + candidate sets; results land under the domain's own results dir."
+    )
+
     args = parser.parse_args()
 
     try:
@@ -236,9 +245,11 @@ if __name__ == '__main__':
                 map_end=map_end,
             )
         elif args.minigrid:
-            # MiniGrid Empty ONLY: select env noise + the matching trained policy together.
+            # MiniGrid: select env noise + the matching trained policy together, and the domain.
             import h_wrappers
             from p_single_experiments import MINIGRID_FAULTS, MINIGRID_VISIBILITIES
+            mg_domain_name = {"empty": "MiniGrid_Empty_16x16_v0",
+                              "crossing": "MiniGrid_SimpleCrossing_S11N2_v0"}[args.mg_domain]
             h_wrappers.set_minigrid_action_prob(args.mg_noise)
             MG_NUM_SEEDS = 3
             # ONE run = one (noise, fault_rate); the FIXED benchmark = 26 faults x seeds, with
@@ -260,6 +271,7 @@ if __name__ == '__main__':
                 run_folder=args.run_folder,
                 unit_start=unit_start,
                 unit_end=unit_end,
+                domain_name=mg_domain_name,
             )
         else:
             # Known-rate: default. Unknown-rate: pass -ufr on the CLI (10x more MC sims, ~10x slower).
