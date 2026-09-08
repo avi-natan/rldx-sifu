@@ -4,7 +4,8 @@ Matches the project convention (see plot_fault_rate_view.py): the metric is the 
 RANK (mean +/- SEM), lower = better (1 = true fault ranked first, 10 = last of the 10 candidates).
 
 Reads all per-task result xlsx in
-    experimental results/MiniGrid_Empty_16x16_v0/minigrid_bench_noise{TAG}/xlsx/
+    experimental results/MiniGrid_Empty_16x16_v0/{known|unknown}/minigrid_bench_noise{TAG}/xlsx/
+    (known/ for known-fault-rate tags; unknown/ when TAG ends in "_ufr")
 (default TAG = 0_7; falls back to loose xlsx at the run-folder top) and writes into a plots/
 subfolder there, plus a PLOT_PROVENANCE.txt.
 
@@ -36,8 +37,10 @@ VIS_COL = "percent_visible_states"
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(SCRIPT_DIR)
+# Runs are filed under known/ (known fault rate) or unknown/ (ufr variant, tag ends "_ufr").
+FR_SUBDIR = "unknown" if NOISE_TAG.endswith("_ufr") else "known"
 RESULTS_DIR = os.path.join(REPO_ROOT, "experimental results", "MiniGrid_Empty_16x16_v0",
-                           f"minigrid_bench_noise{NOISE_TAG}")
+                           FR_SUBDIR, f"minigrid_bench_noise{NOISE_TAG}")
 PLOTS_DIR = os.path.join(RESULTS_DIR, "plots")
 
 _NA = {0: "L", 1: "R", 2: "F"}

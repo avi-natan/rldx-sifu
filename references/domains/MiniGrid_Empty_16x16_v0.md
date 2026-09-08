@@ -162,14 +162,16 @@ reproduced identically across every `(noise, fault_rate)` run.
   + `--mg_num_groups 390` → **MAX PARALLELISM: 1 diagnosis per task**; 1 core/task.
 - **Launch a full noise level** (all 3 fault rates into ONE per-noise folder):
   ```
-  R="experimental results/MiniGrid_Empty_16x16_v0/minigrid_bench_noise0_7"; mkdir -p "$R/logs"
+  R="experimental results/MiniGrid_Empty_16x16_v0/known/minigrid_bench_noise0_7"; mkdir -p "$R/logs"
   for FR in 0.3 0.5 0.8; do
     sbatch --export=ALL,MG_NOISE=0.7,MG_FR=$FR --output="$R/logs/fr${FR}-%A_%a.out" sb_minigrid.sbatch
   done
   ```
   → 3 arrays × 390 = **1170 tasks** per noise level (~200+ run concurrently).
-- **Output layout:** `experimental results/MiniGrid_Empty_16x16_v0/minigrid_bench_noise{tag}/`
-  with `xlsx/` (per-task results) + `logs/` (SLURM) + `plots/` (+ `_MERGED.xlsx`).
+- **Output layout:** results are filed by fault-rate mode into `known/` (known fault rate) and
+  `unknown/` (ufr variant): `experimental results/MiniGrid_Empty_16x16_v0/{known|unknown}/minigrid_bench_noise{tag}/`
+  with `xlsx/` (per-task results) + `logs/` (SLURM) + `plots/` (+ `_MERGED.xlsx`). The sbatch picks the
+  subfolder automatically (`MG_UFR=1` → `unknown/…_ufr`, else `known/`).
 - **Plots:** `plot_minigrid_benchmark.py <noise_tag>` → 6 figures (rank vs visibility & vs fault
   rate, 2 pooled, 2 time), metric = **avg real-fault rank** (1=best, 10=worst; random=5.5), drops
   `PLOT_PROVENANCE.txt`.
@@ -184,8 +186,13 @@ reproduced identically across every `(noise, fault_rate)` run.
 | 0.3 | **3.68** | 0.174 | hardest/limit but still > random |
 
 Clean 3-level noise gradient (0.7 → 0.5 → 0.3 = 2.34 → 2.93 → 3.68). Cross-noise comparison plots:
-`noise_comparison/plots/` (`plot_minigrid_noise_comparison.py`). All 1170 diagnoses per noise; avg
+`known/noise_comparison/plots/` (`plot_minigrid_noise_comparison.py`). All 1170 diagnoses per noise; avg
 ~25 s/diagnosis.
+
+**Unknown fault rate (ufr) variant** — `unknown/minigrid_bench_noise0_5_ufr/` (noise 0.5, 1170 tasks):
+overall mean rank **2.97**, top-1 **0.32** — essentially identical to the known-fr 0.5 run (2.93), so
+jointly estimating the fault rate costs almost nothing here. Monotone in visibility (3.60@20% → 2.44@100%)
+and in injected fault rate (0.3→3.69, 0.5→2.94, 0.8→2.27).
 
 ---
 

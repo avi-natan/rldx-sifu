@@ -29,7 +29,8 @@ NOISES = ["0_3", "0_5", "0_7"]                          # hard -> easy
 COLORS = {"0_3": "#d62728", "0_5": "#ff7f0e", "0_7": "#1f77b4"}
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DDIR = os.path.join(REPO, "experimental results", "MiniGrid_Empty_16x16_v0")
+# The three known-fr runs and this comparison live under the known/ subfolder.
+DDIR = os.path.join(REPO, "experimental results", "MiniGrid_Empty_16x16_v0", "known")
 OUT = os.path.join(DDIR, "noise_comparison", "plots")
 
 

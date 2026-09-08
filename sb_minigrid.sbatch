@@ -17,7 +17,7 @@
 #
 # Launch the grid by exporting MG_NOISE / MG_FR per submission; put xlsx AND logs in one per-noise
 # folder by also overriding --output, e.g. for a full 0.7 noise level (all 3 fault rates):
-#   R="experimental results/MiniGrid_Empty_16x16_v0/minigrid_bench_noise0_7"; mkdir -p "$R/logs"
+#   R="experimental results/MiniGrid_Empty_16x16_v0/known/minigrid_bench_noise0_7"; mkdir -p "$R/logs"
 #   for FR in 0.3 0.5 0.8; do
 #     sbatch --export=ALL,MG_NOISE=0.7,MG_FR=$FR --output="$R/logs/fr${FR}-%A_%a.out" sb_minigrid.sbatch
 #   done
@@ -25,7 +25,7 @@
 #
 # UNKNOWN fault rate: export MG_UFR=1 to add -ufr (diagnoser searches fault-rate candidates
 # 0.1..1.0 instead of being told the rate) -> ~10x more Monte-Carlo, ~10x slower. Output goes to a
-# distinct ..._ufr folder so it never clashes with the known-fr run. Bump --time at submission.
+# distinct unknown/..._ufr folder so it never clashes with the known-fr run. Bump --time at submission.
 #
 # CPU note: the diagnoser is single-threaded Monte-Carlo -> exactly ONE core per task.
 
@@ -40,8 +40,8 @@ export NUMEXPR_NUM_THREADS=1
 MG_NOISE=${MG_NOISE:-0.7}
 MG_FR=${MG_FR:-0.5}
 NOISE_TAG=$(echo "$MG_NOISE" | tr '.' '_')
-UFR_FLAG=""; UFR_TAG=""
-if [ "${MG_UFR:-0}" = "1" ]; then UFR_FLAG="-ufr"; UFR_TAG="_ufr"; fi
+UFR_FLAG=""; UFR_TAG=""; FR_SUBDIR="known"
+if [ "${MG_UFR:-0}" = "1" ]; then UFR_FLAG="-ufr"; UFR_TAG="_ufr"; FR_SUBDIR="unknown"; fi
 
 mkdir -p experiment_logs/minigrid_PO
 
@@ -53,4 +53,4 @@ python main.py \
     --mg_fault_rate ${MG_FR} \
     ${UFR_FLAG} \
     --epsilon 0.04 \
-    -o minigrid_bench_noise${NOISE_TAG}${UFR_TAG}
+    -o ${FR_SUBDIR}/minigrid_bench_noise${NOISE_TAG}${UFR_TAG}
