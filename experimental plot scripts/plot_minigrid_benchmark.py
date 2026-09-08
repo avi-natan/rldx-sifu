@@ -94,39 +94,22 @@ def plot_by_series(df, x_col, series_col, x_label, series_label, title, out_path
     return out_path
 
 
-def plot_per_fault(df, title, out_path):
-    """Per-fault avg real-fault rank (sorted best->worst) = the detectability gradient."""
-    g = df.groupby("fault")[RANK_COL]
-    means = g.mean().sort_values()
-    sems = g.apply(lambda s: s.std(ddof=1) / np.sqrt(len(s)) if len(s) > 1 else 0.0)[means.index]
-    plt.figure(figsize=(11, 5))
-    colors = ["#2ca02c" if v <= 3 else ("#d62728" if v >= RANDOM_RANK else "#1f77b4") for v in means.values]
-    plt.bar(range(len(means)), means.values, yerr=sems.values, capsize=2, color=colors)
-    plt.axhline(RANDOM_RANK, ls="--", color="grey", lw=1, label=f"random ({RANDOM_RANK:g})")
-    plt.xticks(range(len(means)), means.index, rotation=90, fontsize=7)
-    plt.ylabel("Avg real-fault rank  (1 = best)")
-    plt.ylim(1, N_CANDIDATES)
-    plt.title(title)
-    plt.legend(fontsize=8); plt.grid(True, alpha=0.3, axis="y")
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=300, bbox_inches="tight")
-    plt.close()
-    print(f"  saved {out_path}")
-    return out_path
-
-
-def plot_pooled(df, x_col, x_label, title, out_path, label="all fault rates pooled"):
-    """Single aggregate line: avg real-fault rank (+/- SEM) vs x_col, POOLED over everything else."""
+def plot_pooled(df, x_col, x_label, title, out_path, y_col=RANK_COL,
+                y_label="Avg real-fault rank  (1 = best, 10 = worst)",
+                ylim=(1, N_CANDIDATES), baseline=RANDOM_RANK, label="all fault rates pooled"):
+    """Single aggregate line: mean(y_col) +/- SEM vs x_col, POOLED over everything else."""
     xs = sorted(df[x_col].dropna().unique())
     ys, sems = [], []
     for x in xs:
-        m, se = _mean_sem(df[df[x_col] == x][RANK_COL]); ys.append(m); sems.append(se)
+        m, se = _mean_sem(df[df[x_col] == x][y_col]); ys.append(m); sems.append(se)
     plt.figure(figsize=(7.5, 4.8))
     plt.errorbar(xs, ys, yerr=sems, fmt="o-", capsize=3, markersize=7, linewidth=2.2,
                  color="#1f77b4", label=label)
-    plt.axhline(RANDOM_RANK, ls="--", color="grey", lw=1, label=f"random ({RANDOM_RANK:g})")
-    plt.xticks(xs); plt.xlabel(x_label)
-    plt.ylabel("Avg real-fault rank  (1 = best, 10 = worst)"); plt.ylim(1, N_CANDIDATES)
+    if baseline is not None:
+        plt.axhline(baseline, ls="--", color="grey", lw=1, label=f"random ({baseline:g})")
+    plt.xticks(xs); plt.xlabel(x_label); plt.ylabel(y_label)
+    if ylim is not None:
+        plt.ylim(*ylim)
     plt.title(title); plt.grid(True, alpha=0.3); plt.legend(fontsize=9)
     plt.tight_layout(); plt.savefig(out_path, dpi=300, bbox_inches="tight"); plt.close()
     print(f"  saved {out_path}")
@@ -154,11 +137,7 @@ def main():
         out_path=os.path.join(PLOTS_DIR, f"{tag}_rank_vs_faultrate_by_visibility.png"),
         series_fmt=lambda v: f"{int(v)}%"))
 
-    created.append(plot_per_fault(
-        df, title=f"MiniGrid PO: avg rank per fault (label = L,R,F -> mapping)\n{suffix}",
-        out_path=os.path.join(PLOTS_DIR, f"{tag}_rank_per_fault.png")))
-
-    # --- pooled/aggregate curves: all fault rates combined into a single line ---
+    # --- pooled/aggregate rank curves: all fault rates combined into a single line ---
     created.append(plot_pooled(
         df, x_col=VIS_COL, x_label="Visibility (% observed states)",
         title=f"MiniGrid PO: rank vs visibility (ALL fault rates combined)\n{suffix}",
@@ -169,6 +148,21 @@ def main():
         title=f"MiniGrid PO: rank vs fault rate (ALL visibilities combined)\n{suffix}",
         out_path=os.path.join(PLOTS_DIR, f"{tag}_rank_vs_faultrate_pooled.png"),
         label="all visibilities pooled"))
+
+    # --- diagnosis TIME curves (pooled) ---
+    created.append(plot_pooled(
+        df, x_col=VIS_COL, x_label="Visibility (% observed states)",
+        title=f"MiniGrid PO: avg diagnosis time vs visibility\n{suffix}",
+        out_path=os.path.join(PLOTS_DIR, f"{tag}_time_vs_visibility.png"),
+        y_col="diagnosis_time_sec", y_label="Avg diagnosis time (s)", ylim=None,
+        baseline=None, label="all conditions pooled"))
+
+    created.append(plot_pooled(
+        df, x_col=FR_COL, x_label="Fault rate",
+        title=f"MiniGrid PO: avg diagnosis time vs fault rate\n{suffix}",
+        out_path=os.path.join(PLOTS_DIR, f"{tag}_time_vs_faultrate.png"),
+        y_col="diagnosis_time_sec", y_label="Avg diagnosis time (s)", ylim=None,
+        baseline=None, label="all conditions pooled"))
 
     write_plot_provenance(PLOTS_DIR, created, input_sources=[os.path.join(RESULTS_DIR, "xlsx")])
     print("wrote:", *[os.path.basename(c) for c in created])
