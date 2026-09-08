@@ -40,9 +40,23 @@ def make_minigrid_view_comparator(domain_name, render_seed=0):
         state2view = _MINIGRID_ACTIVE_MAPS.get(domain_name) if per_seed else fixed_map
         k1 = (int(raw_state1[0]), int(raw_state1[1]), int(raw_state1[2]))
         k2 = (int(raw_state2[0]), int(raw_state2[1]), int(raw_state2[2]))
-        if state2view is None:   # per-seed but no active map yet (shouldn't happen mid-diagnosis)
-            return k1 == k2
-        return state2view.get(k1, k1) == state2view.get(k2, k2)
+        # NO silent fallbacks: a missing map or an unmapped state means the comparator would
+        # otherwise degrade to raw (col,row,dir) equality and silently corrupt the whole diagnosis
+        # (views compared as if they were exact states). Both are wiring bugs -> fail LOUD instead.
+        if state2view is None:
+            raise RuntimeError(
+                f"MiniGrid view comparator: NO active view map for per-seed-layout domain "
+                f"'{domain_name}'. The env must be reset (which publishes _MINIGRID_ACTIVE_MAPS) "
+                f"before any state is compared. This is a wiring bug, not a recoverable state.")
+        try:
+            v1, v2 = state2view[k1], state2view[k2]
+        except KeyError as miss:
+            raise KeyError(
+                f"MiniGrid view comparator: state {miss.args[0]} is not in the active view map for "
+                f"'{domain_name}' (per_seed={per_seed}, |map|={len(state2view)}). Every compared "
+                f"state must be a valid FREE cell of the CURRENT layout; a miss means a wall / "
+                f"off-grid / wrong-layout state leaked in. Refusing to fall back to raw equality.") from None
+        return v1 == v2
 
     return view_compare
 
