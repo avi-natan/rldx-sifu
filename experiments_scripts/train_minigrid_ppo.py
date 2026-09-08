@@ -26,7 +26,9 @@ import minigrid  # noqa: F401  (registers MiniGrid-* with gymnasium)
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecMonitor
 
+import h_wrappers
 from h_wrappers import SeededStochasticActionWrapper
+h_wrappers._register_minigrid_custom_envs()  # register custom IDs (SimpleCrossing-S11N2) in EVERY process
 
 
 class ImgDirFlatWrapper(gymnasium.ObservationWrapper):
