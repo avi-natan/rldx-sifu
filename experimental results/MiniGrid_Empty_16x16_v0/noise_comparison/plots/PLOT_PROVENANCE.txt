@@ -1,0 +1,14 @@
+PLOT PROVENANCE
+===============
+These plots were created by : C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental plot scripts\plot_minigrid_noise_comparison.py
+Generated                   : 2026-09-08 21:58:31
+Command                     : experimental plot scripts/plot_minigrid_noise_comparison.py
+
+Plots created in this folder (C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\MiniGrid_Empty_16x16_v0\noise_comparison\plots):
+  - minigrid_rank_vs_visibility_by_noise.png
+  - minigrid_rank_vs_faultrate_by_noise.png
+
+Input data read from:
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\MiniGrid_Empty_16x16_v0\minigrid_bench_noise0_3\xlsx
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\MiniGrid_Empty_16x16_v0\minigrid_bench_noise0_5\xlsx
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\MiniGrid_Empty_16x16_v0\minigrid_bench_noise0_7\xlsx

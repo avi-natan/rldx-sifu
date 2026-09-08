@@ -179,9 +179,13 @@ reproduced identically across every `(noise, fault_rate)` run.
 ## 11. Results so far (avg real-fault rank of 10; lower better; random = 5.5)
 | noise | overall mean rank | top-1 | notes |
 |---|---|---|---|
-| 0.7 | **2.34** | 0.461 | diagnosable; monotonic in fault rate & visibility |
-| 0.5 | *(running)* | — | quick check strong (avg 1.5 on a 4-candidate probe) |
-| 0.3 | **3.68** | 0.174 | hard/limit but still > random |
+| 0.7 | **2.34** | 0.461 | easiest; monotonic in fault rate & visibility |
+| 0.5 | **2.93** | 0.354 | middle of the gradient |
+| 0.3 | **3.68** | 0.174 | hardest/limit but still > random |
+
+Clean 3-level noise gradient (0.7 → 0.5 → 0.3 = 2.34 → 2.93 → 3.68). Cross-noise comparison plots:
+`noise_comparison/plots/` (`plot_minigrid_noise_comparison.py`). All 1170 diagnoses per noise; avg
+~25 s/diagnosis.
 
 ---
 
