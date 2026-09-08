@@ -49,25 +49,25 @@ maps directly onto his likelihood ranking and unknown-fault-rate variant.
 
 ## Environments
 
-- **FrozenLake** (stochastic) — working.
-- **Taxi-v4** (stochastic) — added, **not yet tested**.
-- **MiniGrid** (partially observed; branch `minigrid-integration`) — `MiniGrid-Empty-16x16`
-  (and `-Empty-Random-6x6`). **The diagnoser sees only the egocentric VIEW** (true partial
-  observability). `MiniGridSetStepWrapper.set_state` localizes the observed view to the states
-  consistent with it and SAMPLES one `(col,row,dir)` (position AND direction — a view often
-  reveals neither; up to 252 states share the empty-centre view), and the comparator compares
-  VIEWS — both are the DEFAULTS for MiniGrid domains, no mode flag. Stochasticity via a custom
-  `SeededStochasticActionWrapper` (MiniGrid's own `StochasticActionWrapper` draws its coin from
-  the GLOBAL numpy RNG → not seed-controlled → do not use it). Policy is a deterministic greedy
-  navigator (`MiniGridEmptyHardcodedPolicy`). Perf: `gen_obs` is stubbed + env-checker disabled +
-  view maps precomputed (~2.5x). Benchmark: `multiple_experiment_MiniGrid_fault_benchmark`
-  (settings mirror FrozenLake: eps 0.04, fr 0.3/0.5/0.8, vis 20-100, 10 candidate faults, only
-  the 9 real faults injected), cluster-split by flat work-unit (`--minigrid --mg_group/--mg_num_groups`,
-  `sb_minigrid.sbatch`, 1 core/task). Smoke test: `experiments_scripts/minigrid_empty_smoke.py`.
-  A first 100-instance cluster run is done (results ~ on par with fully-observed FrozenLake/Taxi).
-  Install caveat: `pip install minigrid` pulls `pygame-ce`, which overwrites `pygame`; on Windows
-  it's blocked by Application Control (fix = `pip uninstall -y pygame-ce pygame && pip install
-  pygame==2.6.1`); on Linux/cluster pygame-ce works fine.
+**Per-domain reference cards live in `references/domains/<domain>.md`** — one card each
+(observability, stochasticity param, policy, state/comparator/`set_state`, diagnosis knobs, fault +
+candidate selection, seeds-benchmark explanation, the exact `main` function, files/functions,
+results, gotchas). **Read the domain's card first when working on it** — it is the single source of
+truth (this list is only a pointer).
+
+- **FrozenLake** (stochastic, `is_slippery`) — working; way2 known/unknown-fr benchmarks done.
+  Card: `references/domains/FrozenLake_v1.md`.
+- **Taxi-v4** (stochastic, "rainy" 0.7) — trained PPO (tabulated), hard **class-2** benchmark;
+  it's the `main` default. Card: `references/domains/Taxi_v4.md`.
+- **MiniGrid** `MiniGrid-Empty-16x16` (partially observed; branch `minigrid-integration`) — the
+  diagnoser sees only the egocentric OBSERVATION (image + `direction`); `set_state` localizes the
+  observed view and SAMPLES a consistent position; the comparator compares observations (defaults,
+  no mode flag). Stochasticity via our `SeededStochasticActionWrapper` — `MINIGRID_ACTION_PROB ∈
+  {0.3,0.5,0.7}`, selected together with the matching **trained obs-policy** via `main.py --mg_noise`
+  (NOT MiniGrid's own global-RNG wrapper). Benchmark `multiple_experiment_MiniGrid_fault_benchmark`:
+  **26 injected faults × 3 seeds × 5 visibilities**, eps **0.04** only, fault rates 0.3/0.5/0.8, a
+  **per-instance static hardest-10** candidate set (always incl. identity). Full details, results,
+  and the pygame-ce caveat: `references/domains/MiniGrid_Empty_16x16_v0.md`.
 - **CliffWalking** — planned next.
 - Previous work used deterministic Gymnasium envs (Acrobot, CartPole, MountainCar, Taxi,
   LunarLander) — see the many `single_experiment_<Env>_<W|SN|SIF|SIFU…>` functions.
