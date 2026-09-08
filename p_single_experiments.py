@@ -1747,8 +1747,8 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
                  f"_UNITS_{unit_start}-{unit_end}")
     # Keep per-task xlsx in an xlsx/ subfolder of the run folder, so it sits alongside logs/
     # and plots/ (run_folder/{xlsx,logs,plots}) instead of loose at the top.
-    output_dir = os.path.join(domain_results_dir(domain_name, run_folder), "xlsx")
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir = _os.path.join(domain_results_dir(domain_name, run_folder), "xlsx")
+    _os.makedirs(output_dir, exist_ok=True)
     exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)
     print(f"file was written at: {output_dir}/{file_path}.xlsx")
 
