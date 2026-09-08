@@ -116,6 +116,7 @@ def main():
     p.add_argument("--learning_rate", type=float, default=2.5e-4)
     p.add_argument("--net_width", type=int, default=64, help="MLP hidden width (both layers)")
     p.add_argument("--use_subproc", action="store_true", help="SubprocVecEnv (parallel cores)")
+    p.add_argument("--device", default="auto", help="PPO device: auto|cpu|cuda (MLP policy is usually fastest on cpu)")
     p.add_argument("--render_gif", action="store_true", help="save a greedy-episode GIF after training")
     args = p.parse_args()
 
@@ -131,12 +132,16 @@ def main():
     policy_kwargs = dict(net_arch=[args.net_width, args.net_width])
     model = PPO("MlpPolicy", venv, seed=args.seed, n_steps=args.n_steps, batch_size=256,
                 gae_lambda=0.95, gamma=0.99, ent_coef=args.ent_coef,
-                learning_rate=args.learning_rate, policy_kwargs=policy_kwargs, verbose=1)
+                learning_rate=args.learning_rate, policy_kwargs=policy_kwargs,
+                device=args.device, verbose=1)
+    print(f"[device] requested={args.device} resolved={model.device}", flush=True)
 
     t0 = time.time()
     model.learn(total_timesteps=args.timesteps, progress_bar=False)
     model.save(os.path.join(out, "model"))
     dt = time.time() - t0
+    print(f"[fps] device={model.device} timesteps={args.timesteps} train_sec={dt:.1f} "
+          f"fps={args.timesteps/dt:.0f}", flush=True)
 
     res = evaluate(model, args.domain, args.noise_prob, args.seed, episodes=200)
     line = (f"[done] {tag}  train_sec={dt:.0f}  success_rate={res['success_rate']:.3f}  "
