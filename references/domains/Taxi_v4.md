@@ -56,7 +56,7 @@ for the epsilon study).
 ## 5. Diagnosis settings (the standardized knobs)
 | Knob | Value(s) | Notes |
 |---|---|---|
-| **epsilon** | **SWEEP** {0.1, 0.07, 0.05, 0.04, 0.03, 0.02} | ONE epsilon per run. On the **committed driver (fr 0.3)** ε is **FLAT** for accuracy (rank ~2.88–2.96, live). ε becomes **monotone & significant** only in the separate very-low-fault-rate study (fr 0.0025–0.02, standalone scripts) — sweet spot ≈0.04–0.03 there. |
+| **epsilon** | **SWEEP** {0.1, 0.07, 0.05, 0.04, 0.03, 0.02} | ONE epsilon per run. In the actual experiments (committed driver, fr 0.3) ε is **FLAT** for accuracy (rank ~2.88–2.96, live) — it only trades compute. (A pathological low-fr side-study where ε mattered barely matters; see §11 aside.) |
 | **fault rate** | **depends on the experiment** | The committed `main` driver (class-2) FIXES **0.3** (only visibility swept). The deeper ε study used very low {0.02, 0.01, 0.005, 0.0025}; the easy v1 experiment used {0.5, 0.8}. |
 | **visibilities** | **20, 40, 60, 80, 100 %** | swept INSIDE each run. |
 | **candidate faults** | **10 per instance** | class-2: E + 5 other a*-maps + 4 tier-2 twins (see §6). Frozen per seed. |
@@ -151,19 +151,18 @@ epsilon / #-simulations tradeoff is actually observable (unlike easy FrozenLake/
 
 ---
 
-## 11. Results so far (avg real-fault rank of 10; lower better; random ≈ 5.5)
-**LIVE — committed class-2 driver, known-fr, fr 0.3** (from xlsx, N=3000: 100 seeds × 5 vis × 6 epsilons):
+## 11. Results (the experimental results that matter) — avg real-fault rank of 10; lower better; random ≈ 5.5
+**Committed class-2 benchmark, known-fr, fr 0.3** — live from the xlsx (N=3000: 100 seeds × 5 vis × 6 epsilons):
 - **Overall:** mean rank **2.94**, top-1 **0.32**, top-3 **0.68**.
-- **By visibility** (monotone): 20% → **4.16 / 0.17** · 40% → 3.42 / 0.23 · 60% → 2.91 / 0.32 ·
-  80% → 2.36 / 0.39 · 100% → **1.83 / 0.51**.
-- **Epsilon:** FLAT (rank ~2.88–2.96 across {0.02…0.1}) — at fr 0.3 more sims don't help.
+- **By visibility** (the real difficulty axis, monotone): 20% → **4.16 / 0.17** · 40% → 3.42 / 0.23 ·
+  60% → 2.91 / 0.32 · 80% → 2.36 / 0.39 · 100% → **1.83 / 0.51**.
+- **Epsilon:** FLAT (rank ~2.88–2.96 across {0.02…0.1}) — in the actual experiments, more sims don't
+  change accuracy; epsilon only trades compute.
 
-**Separate very-low-fault-rate ε study** (standalone `run_class2_*.py`, fr **0.0025–0.02**, results in
-`runs/class2_lowfr/*.csv`, NOT the xlsx above; from memory): avg rank **3.55 → 3.13**, detect@1
-**22% → 29%** as ε 0.1 → 0.02 — **monotone & significant** (compute 33k → 369k traces). This is the
-"epsilon matters" headline, but only at fault rates ~100× lower than the committed driver.
-
-**Easy v1 (most-used action, fr 0.5/0.8), for contrast (from memory):** rank ≈ **2.0**, detect@1 ≈ **59%**; ε flat.
+_(Aside, low priority: a one-off very-low-fault-rate side-study — standalone `run_class2_*.py`,
+fr 0.0025–0.02, `runs/class2_lowfr/*.csv` — showed epsilon CAN become monotone (rank 3.55→3.13) if
+the problem is made pathologically hard. It barely matters and is not part of the experimental
+results above.)_
 
 ---
 
