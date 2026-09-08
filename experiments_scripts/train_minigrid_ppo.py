@@ -25,6 +25,12 @@ import gymnasium
 import minigrid  # noqa: F401  (registers MiniGrid-* with gymnasium)
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecMonitor
+from stable_baselines3.common.callbacks import CheckpointCallback
+
+
+def _linear_schedule(initial):
+    """SB3 lr schedule: linearly decay from `initial` at start to 0 at the end of training."""
+    return lambda progress_remaining: progress_remaining * initial
 
 import h_wrappers
 from h_wrappers import SeededStochasticActionWrapper
@@ -120,6 +126,15 @@ def main():
                    help="PPO device. Default cpu: SB3 FORCES MlpPolicy to CPU anyway (a GPU-vs-CPU "
                         "bench showed requested=cuda -> resolved=cpu, zero GPU use); the only speed "
                         "lever is CPU cores/node. Kept as a flag for CnnPolicy experiments.")
+    p.add_argument("--n_epochs", type=int, default=10,
+                   help="PPO update epochs per rollout. FEWER (3-5) = less overfitting to each batch "
+                        "-> often better generalization across the random layouts.")
+    p.add_argument("--gamma", type=float, default=0.99, help="discount factor")
+    p.add_argument("--lr_schedule", default="const", choices=["const", "linear"],
+                   help="'linear' decays the learning rate to 0 over training (often better final policy).")
+    p.add_argument("--checkpoint_freq", type=int, default=0,
+                   help="If >0, save a checkpoint every this many timesteps (per env) so LONG runs "
+                        "keep a usable model even if they don't reach the end. 0 = save only at end.")
     p.add_argument("--render_gif", action="store_true", help="save a greedy-episode GIF after training")
     args = p.parse_args()
 
@@ -133,14 +148,21 @@ def main():
     venv = VecMonitor(venv)
 
     policy_kwargs = dict(net_arch=[args.net_width, args.net_width])
+    lr = _linear_schedule(args.learning_rate) if args.lr_schedule == "linear" else args.learning_rate
     model = PPO("MlpPolicy", venv, seed=args.seed, n_steps=args.n_steps, batch_size=256,
-                gae_lambda=0.95, gamma=0.99, ent_coef=args.ent_coef,
-                learning_rate=args.learning_rate, policy_kwargs=policy_kwargs,
+                n_epochs=args.n_epochs, gae_lambda=0.95, gamma=args.gamma, ent_coef=args.ent_coef,
+                learning_rate=lr, policy_kwargs=policy_kwargs,
                 device=args.device, verbose=1)
-    print(f"[device] requested={args.device} resolved={model.device}", flush=True)
+    print(f"[device] requested={args.device} resolved={model.device} | n_epochs={args.n_epochs} "
+          f"gamma={args.gamma} lr_schedule={args.lr_schedule}", flush=True)
+
+    callback = None
+    if args.checkpoint_freq > 0:
+        callback = CheckpointCallback(save_freq=max(1, args.checkpoint_freq // args.n_envs),
+                                      save_path=os.path.join(out, "checkpoints"), name_prefix="ckpt")
 
     t0 = time.time()
-    model.learn(total_timesteps=args.timesteps, progress_bar=False)
+    model.learn(total_timesteps=args.timesteps, progress_bar=False, callback=callback)
     model.save(os.path.join(out, "model"))
     dt = time.time() - t0
     print(f"[fps] device={model.device} timesteps={args.timesteps} train_sec={dt:.1f} "
