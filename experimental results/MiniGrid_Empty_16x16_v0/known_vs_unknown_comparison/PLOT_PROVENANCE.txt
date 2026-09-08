@@ -1,0 +1,13 @@
+PLOT PROVENANCE
+===============
+These plots were created by : C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental plot scripts\plot_minigrid_known_vs_unknown.py
+Generated                   : 2026-09-08 23:25:37
+Command                     : experimental plot scripts/plot_minigrid_known_vs_unknown.py
+
+Plots created in this folder (C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\MiniGrid_Empty_16x16_v0\known_vs_unknown_comparison):
+  - minigrid_noise0_5_rank_known_vs_unknown.png
+  - minigrid_noise0_5_time_known_vs_unknown.png
+
+Input data read from:
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\MiniGrid_Empty_16x16_v0\known\minigrid_bench_noise0_5
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\MiniGrid_Empty_16x16_v0\unknown\minigrid_bench_noise0_5_ufr
