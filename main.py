@@ -36,6 +36,7 @@ from p_single_experiments import (single_experiment_manual, \
                                   multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO,
                                   multiple_experiment_Taxi_v4_hard_class2_PO,
                                   multiple_experiment_FrozenLake_fault_benchmark,
+                                  multiple_experiment_MiniGrid_fault_benchmark,
                                   single_experiment_stochastic_Taxi_v4, single_experiment_stochastic_FrozenLake)
 
 
@@ -123,6 +124,48 @@ if __name__ == '__main__':
         help="Number of FrozenLake map groups to split into (default: 10 -> 10 maps each)."
     )
 
+    parser.add_argument(
+        "--minigrid",
+        action="store_true",
+        help="Run the MiniGrid partial-observability fault benchmark "
+             "instead of Taxi/FrozenLake."
+    )
+
+    parser.add_argument(
+        "--mg_group",
+        type=int,
+        default=None,
+        help="MiniGrid instance-group index (0-based) for job-array splitting. Splits the "
+             "instances into --mg_num_groups equal groups; this task runs only its group. "
+             "Set to $SLURM_ARRAY_TASK_ID. Omit to run all instances in one process."
+    )
+
+    parser.add_argument(
+        "--mg_num_groups",
+        type=int,
+        default=10,
+        help="Number of MiniGrid instance groups to split into (default: 10)."
+    )
+
+    parser.add_argument(
+        "--mg_noise",
+        type=float,
+        default=0.7,
+        choices=[0.3, 0.5, 0.7],
+        help="MiniGrid Empty ONLY: env action-success probability. Selects BOTH the env noise "
+             "(SeededStochasticActionWrapper prob) AND the matching trained policy "
+             "(models/PPO/..._noise{mg_noise}.zip). 0.7=diagnosable, 0.5=middle, 0.3=very noisy. "
+             "Ignored for non-MiniGrid domains."
+    )
+
+    parser.add_argument(
+        "--mg_fault_rate",
+        type=float,
+        default=0.5,
+        help="MiniGrid ONLY: the single injected fault-firing probability for this run "
+             "(the benchmark uses one fault_rate per run; sweep it across runs)."
+    )
+
     args = parser.parse_args()
 
     try:
@@ -191,6 +234,32 @@ if __name__ == '__main__':
                 run_folder=args.run_folder,
                 map_start=map_start,
                 map_end=map_end,
+            )
+        elif args.minigrid:
+            # MiniGrid Empty ONLY: select env noise + the matching trained policy together.
+            import h_wrappers
+            from p_single_experiments import MINIGRID_FAULTS, MINIGRID_VISIBILITIES
+            h_wrappers.set_minigrid_action_prob(args.mg_noise)
+            MG_NUM_SEEDS = 3
+            # ONE run = one (noise, fault_rate); the FIXED benchmark = 26 faults x seeds, with
+            # visibility swept inside. Work-units = fault x seed x visibility, split for the array.
+            MG_TOTAL_UNITS = len(MINIGRID_FAULTS) * MG_NUM_SEEDS * len(MINIGRID_VISIBILITIES)
+            unit_start, unit_end = 0, None
+            if args.mg_group is not None:
+                group_size = MG_TOTAL_UNITS // args.mg_num_groups
+                unit_start = args.mg_group * group_size
+                unit_end = (unit_start + group_size
+                            if args.mg_group < args.mg_num_groups - 1 else MG_TOTAL_UNITS)
+                print(f"MiniGrid group {args.mg_group}/{args.mg_num_groups} "
+                      f"-> work-units [{unit_start}, {unit_end}) of {MG_TOTAL_UNITS}")
+            multiple_experiment_MiniGrid_fault_benchmark(
+                epsilon=args.epsilon,
+                unknown_fault_rate=args.unknown_fault_rate,
+                fault_rate=args.mg_fault_rate,
+                num_seeds=MG_NUM_SEEDS,
+                run_folder=args.run_folder,
+                unit_start=unit_start,
+                unit_end=unit_end,
             )
         else:
             # Known-rate: default. Unknown-rate: pass -ufr on the CLI (10x more MC sims, ~10x slower).

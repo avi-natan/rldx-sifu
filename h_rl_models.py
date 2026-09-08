@@ -107,6 +107,99 @@ class FrozenLakeHardcodedPolicy:
         return action, None
 
 
+class MiniGridEmptyHardcodedPolicy:
+    """Deterministic greedy navigation policy for a MiniGrid Empty room.
+
+    Consumes the raw state (agent_col, agent_row, agent_dir) and returns a discrete
+    action toward the fixed goal at (width-2, height-2).
+      actions:     0 = turn left, 1 = turn right, 2 = move forward
+      directions:  0 = east(+x), 1 = south(+y), 2 = west(-x), 3 = north(-y)
+    Defined for EVERY state (the Monte-Carlo diagnoser queries off-path states too).
+    Behaves like a deterministic trained policy: same state -> same action.
+    """
+    TURN_LEFT, TURN_RIGHT, FORWARD = 0, 1, 2
+
+    def __init__(self, goal):
+        self.goal = goal
+
+    def predict(self, obs, deterministic=True):
+        x, y, d = int(obs[0]), int(obs[1]), int(obs[2])
+        gx, gy = self.goal
+        dx, dy = gx - x, gy - y
+        if dx == 0 and dy == 0:
+            return self.FORWARD, None  # at goal; episode terminates on arrival
+        # desired heading: close the larger axis first
+        if abs(dx) >= abs(dy):
+            desired = 0 if dx > 0 else 2
+        else:
+            desired = 1 if dy > 0 else 3
+        if d == desired:
+            return self.FORWARD, None
+        # rotate toward the desired heading (dir+1 = turn right, dir-1 = turn left)
+        diff = (desired - d) % 4
+        return self.TURN_LEFT if diff == 3 else self.TURN_RIGHT, None
+
+
+def minigrid_obs_vector(image, direction):
+    """The EXACT observation the trained policy consumes, rebuilt from a state's raw MiniGrid
+    observation: flatten(image)/255 ++ one_hot(direction). MUST match
+    experiments_scripts/train_minigrid_ppo.ImgDirFlatWrapper (that is what the net was trained on).
+    """
+    img = image.astype(np.float32).ravel() / 255.0
+    d = np.zeros(4, dtype=np.float32)
+    d[int(direction)] = 1.0
+    return np.concatenate([img, d])
+
+
+class MiniGridTabulatedPolicy:
+    """The trained OBS-input PPO policy, TABULATED over the (small, enumerable) MiniGrid state
+    space so diagnosis is an O(1) dict lookup instead of a neural-net forward pass on every one
+    of the Monte-Carlo diagnoser's hundreds of thousands of steps. Mirrors TaxiHardcodedPolicy.
+
+    table[(col,row,dir)] = the greedy action the net outputs for THAT state's observation. Because
+    the observation is a deterministic function of the state, this is behaviourally identical to
+    model.predict(obs, deterministic=True); aliased states (same view) get the same action, exactly
+    as the obs-based net would. predict() receives the raw (col,row,dir) state (the identity
+    refiner), so no gen_obs is needed at diagnosis time.
+    """
+    def __init__(self, table):
+        self.table = table
+
+    def predict(self, obs, deterministic=True):
+        key = (int(obs[0]), int(obs[1]), int(obs[2]))
+        return self.table.get(key, 2), None   # default FORWARD if ever queried off-grid (shouldn't happen)
+
+
+# cache the tabulated policy per model path so we build it once per process
+_MINIGRID_POLICY_CACHE = {}
+
+def build_minigrid_tabulated_policy(model_path, ml_model_name, domain_name):
+    """Load the trained SB3 model once and tabulate its greedy action for every interior MiniGrid
+    state, returning a MiniGridTabulatedPolicy. Cached by model_path."""
+    if model_path in _MINIGRID_POLICY_CACHE:
+        return _MINIGRID_POLICY_CACHE[model_path]
+
+    import gymnasium, minigrid  # noqa: F401
+    model = models[ml_model_name].load(model_path)
+    env = gymnasium.make(domain_name.replace('_', '-'))
+    env.reset(seed=0)
+    u = env.unwrapped
+    table = {}
+    for x in range(1, u.width - 1):
+        for y in range(1, u.height - 1):
+            for d in range(4):
+                u.agent_pos = (x, y); u.agent_dir = d
+                o = u.gen_obs()
+                vec = minigrid_obs_vector(o["image"], o["direction"])
+                table[(x, y, d)] = int(model.predict(vec, deterministic=True)[0])
+    env.close()
+
+    policy = MiniGridTabulatedPolicy(table)
+    _MINIGRID_POLICY_CACHE[model_path] = policy
+    print(f"[MiniGridTabulatedPolicy] tabulated {len(table)} states from {model_path}")
+    return policy
+
+
 class TaxiHardcodedPolicy:
     """Deterministic policy as a {state: action} lookup table.
 
@@ -151,6 +244,16 @@ def load_trained_model(domain_name, ml_model_name, env=None):
     if domain_name == "FrozenLake_v1":
         assert HARD_CODED_POLICY is not None, "FrozenLake policy not set"
         return FrozenLakeHardcodedPolicy(HARD_CODED_POLICY)
+
+    # MiniGrid Empty: the trained OBS-input PPO policy, tabulated for fast lookup. We load the
+    # variant trained at the SAME noise level the env uses (MINIGRID_ACTION_PROB), so the policy
+    # is diagnosed under the stochasticity it learned. (The MiniGridEmptyHardcodedPolicy greedy
+    # navigator above is kept for reference but no longer used.)
+    if domain_name.startswith("MiniGrid"):
+        from h_wrappers import MINIGRID_ACTION_PROB
+        models_dir = f"environments/{domain_name}/models/{ml_model_name}"
+        model_path = f"{models_dir}/{domain_name}__{ml_model_name}__noise{MINIGRID_ACTION_PROB}.zip"
+        return build_minigrid_tabulated_policy(model_path, ml_model_name, domain_name)
 
     models_dir = f"environments/{domain_name}/models/{ml_model_name}"
     model_path = f"{models_dir}/{domain_name}__{ml_model_name}.zip"

@@ -49,8 +49,25 @@ maps directly onto his likelihood ranking and unknown-fault-rate variant.
 
 ## Environments
 
-- **FrozenLake** (stochastic) — working.
-- **Taxi-v4** (stochastic) — added, **not yet tested**.
+**Per-domain reference cards live in `references/domains/<domain>.md`** — one card each
+(observability, stochasticity param, policy, state/comparator/`set_state`, diagnosis knobs, fault +
+candidate selection, seeds-benchmark explanation, the exact `main` function, files/functions,
+results, gotchas). **Read the domain's card first when working on it** — it is the single source of
+truth (this list is only a pointer).
+
+- **FrozenLake** (stochastic, `is_slippery`) — working; way2 known/unknown-fr benchmarks done.
+  Card: `references/domains/FrozenLake_v1.md`.
+- **Taxi-v4** (stochastic, "rainy" 0.7) — trained PPO (tabulated), hard **class-2** benchmark;
+  it's the `main` default. Card: `references/domains/Taxi_v4.md`.
+- **MiniGrid** `MiniGrid-Empty-16x16` (partially observed; branch `minigrid-integration`) — the
+  diagnoser sees only the egocentric OBSERVATION (image + `direction`); `set_state` localizes the
+  observed view and SAMPLES a consistent position; the comparator compares observations (defaults,
+  no mode flag). Stochasticity via our `SeededStochasticActionWrapper` — `MINIGRID_ACTION_PROB ∈
+  {0.3,0.5,0.7}`, selected together with the matching **trained obs-policy** via `main.py --mg_noise`
+  (NOT MiniGrid's own global-RNG wrapper). Benchmark `multiple_experiment_MiniGrid_fault_benchmark`:
+  **26 injected faults × 3 seeds × 5 visibilities**, eps **0.04** only, fault rates 0.3/0.5/0.8, a
+  **per-instance static hardest-10** candidate set (always incl. identity). Full details, results,
+  and the pygame-ce caveat: `references/domains/MiniGrid_Empty_16x16_v0.md`.
 - **CliffWalking** — planned next.
 - Previous work used deterministic Gymnasium envs (Acrobot, CartPole, MountainCar, Taxi,
   LunarLander) — see the many `single_experiment_<Env>_<W|SN|SIF|SIFU…>` functions.

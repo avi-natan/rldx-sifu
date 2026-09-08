@@ -23,6 +23,11 @@ def frozen_lake_refiner(raw_state):
     refined_state = int(raw_state)
     return refined_state
 
+def minigrid_refiner(raw_state):
+    # The hardcoded navigation policy consumes the raw (col,row,dir) state directly,
+    # so the refiner is the identity.
+    return raw_state
+
 
 refiners = {
     "Acrobot_v1": acrobot_refiner,
@@ -30,5 +35,7 @@ refiners = {
     "MountainCar_v0": mountain_car_refiner,
     "Taxi_v3": taxi_refiner,
     "Taxi_v4": taxi_refiner,
-    "FrozenLake_v1": frozen_lake_refiner
+    "FrozenLake_v1": frozen_lake_refiner,
+    "MiniGrid_Empty_Random_6x6_v0": minigrid_refiner,
+    "MiniGrid_Empty_16x16_v0": minigrid_refiner,
 }

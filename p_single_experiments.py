@@ -1590,6 +1590,169 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_r
     print(f"file was written at: {output_dir}/{file_path}.xlsx")
 
 
+# ===================== MiniGrid fault benchmark (item 5) — fault space & candidates =========
+# A fault corrupts action EXECUTION for the 3 navigation actions (0=left, 1=right, 2=forward)
+# and maps ONLY within {0,1,2} (no no-op/`done` targets). That is every function {0,1,2}->{0,1,2}:
+# 3^3 = 27 of them; dropping the identity ("no fault") leaves the 26 INJECTED faults. Actions 3-6
+# are unused no-ops (kept as identity in the spec string).
+import random as _mg_random
+from itertools import product as _mg_product
+
+_MG_IDENTITY = (0, 1, 2)
+
+def _mg_spec(m):
+    """(f0,f1,f2) -> a FaultModelGeneratorDiscrete spec string."""
+    return "{0:%d,1:%d,2:%d,3:3,4:4,5:5,6:6}" % (int(m[0]), int(m[1]), int(m[2]))
+
+_MG_ALL_MAPS = [m for m in _mg_product((0, 1, 2), repeat=3)]
+MINIGRID_FAULTS = [m for m in _MG_ALL_MAPS if m != _MG_IDENTITY]   # 26 injected faults (tuples)
+MINIGRID_IDENTITY_SPEC = _mg_spec(_MG_IDENTITY)                    # candidate-only ("no fault")
+MINIGRID_VISIBILITIES = [20, 40, 60, 80, 100]
+
+def _mg_distance(a, b):
+    return sum(a[i] != b[i] for i in range(3))
+
+def build_minigrid_candidate_sets(seed=42, size=10):
+    """Static, frozen per-fault candidate sets (as SPEC STRINGS). For each injected fault T the
+    candidate set (size 10) is ALWAYS {T, identity}, then filled with the HARDEST others by
+    Hamming distance to T (all distance-1 faults, then a SEEDED-RANDOM choice among distance-2).
+    'Hardest' = maps the fewest of the 3 actions differently -> nearly identical trajectory.
+    The metric is static (no policy/noise), so the candidate sets are FIXED across every run.
+    Deterministic given (seed, fault enumeration order). Returns {spec(T): [10 candidate specs]}."""
+    rng = _mg_random.Random(seed)
+    sets = {}
+    for T in MINIGRID_FAULTS:
+        must = [T, _MG_IDENTITY]                         # T is never identity here
+        need = size - len(must)
+        buckets = {}
+        for C in _MG_ALL_MAPS:
+            if C in must:
+                continue
+            buckets.setdefault(_mg_distance(T, C), []).append(C)
+        fill = []
+        for d in sorted(buckets):                        # distance 1, then 2, then 3
+            b = sorted(buckets[d]); rng.shuffle(b)       # seeded random within a distance class
+            fill.extend(b)
+        chosen = must + fill[:need]                      # 10 tuples: T, identity, + 8 hardest
+        sets[_mg_spec(T)] = [_mg_spec(m) for m in chosen]
+    return sets
+
+# spec(true fault) -> its frozen 10-candidate set (spec strings; always contains T and identity)
+MINIGRID_CANDIDATE_SETS = build_minigrid_candidate_sets()
+
+
+def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rate=False,
+                                                 fault_rate=0.5, num_seeds=3, run_folder=None,
+                                                 unit_start=0, unit_end=None,
+                                                 domain_name="MiniGrid_Empty_16x16_v0"):
+    """MiniGrid partial-observability fault-diagnosis benchmark (item 5).
+
+    FIXED benchmark: 26 execution faults x num_seeds instances, each carrying a STATIC 10-candidate
+    set (true fault + identity + 8 hardest confusers; see build_minigrid_candidate_sets). A RUN
+    fixes ONE (noise, fault_rate) and diagnoses every instance across the FULL visibility sweep
+    20/40/60/80/100 -- so the SAME instances are compared across conditions (clean controlled
+    comparison). MiniGrid is partially observed: the diagnoser sees only egocentric VIEWS
+    (set_state localizes+samples; the comparator compares views -- defaults for MiniGrid domains).
+
+    NOISE is set by the caller via h_wrappers.set_minigrid_action_prob (main.py --mg_noise), which
+    also selects the matching trained policy; this run reads it only to record/label. `fault_rate`
+    is this run's single injected fault-firing probability.
+
+    Work-units = (fault x seed x visibility) = 26*num_seeds*5. unit_start/unit_end pick a half-open
+    window for SLURM job-array splitting; the window is encoded in the filename (merge after).
+    """
+    from h_wrappers import MINIGRID_ACTION_PROB
+    records = []
+    skipped = 0
+    fault_rate_candidates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0] if unknown_fault_rate else None
+    fr_token = "unknown_fr" if unknown_fault_rate else "known_fr"
+
+    ml_model_name = "PPO"
+    render_mode = "rgb_array"
+    max_exec_len = 80          # keep trajectories < MAX_STATES (200); plenty for a 16x16 room
+    debug_print = False
+
+    # Flat work-unit list (fault_index, seed_index, visibility). Fixed 26 faults x num_seeds
+    # instances; visibility swept inside each run. Any contiguous window is a valid task.
+    UNITS = [(fi, si, vis)
+             for fi in range(len(MINIGRID_FAULTS))
+             for si in range(num_seeds)
+             for vis in MINIGRID_VISIBILITIES]
+    total_units = len(UNITS)
+    if unit_end is None:
+        unit_end = total_units
+    unit_start = max(0, unit_start)
+    unit_end = min(unit_end, total_units)
+    my_units = UNITS[unit_start:unit_end]
+
+    print(f"Running MiniGrid PO benchmark ({fr_token}) | domain={domain_name} | "
+          f"noise={MINIGRID_ACTION_PROB} | fault_rate={fault_rate} | epsilon={epsilon} | "
+          f"faults={len(MINIGRID_FAULTS)} x seeds={num_seeds} x vis={len(MINIGRID_VISIBILITIES)} "
+          f"= {total_units} units | window=[{unit_start},{unit_end}) ({len(my_units)})\n\n")
+
+    for u_idx, (fi, si, percent_visible_states) in enumerate(my_units, start=unit_start):
+        T = MINIGRID_FAULTS[fi]
+        execution_fault_mode_name = _mg_spec(T)
+        candidate_specs = MINIGRID_CANDIDATE_SETS[execution_fault_mode_name]  # 10, incl. T + identity
+        instance_index = fi * num_seeds + si     # identifies the fixed instance (same across runs)
+        instance_seed = 10 + instance_index
+        dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        print(f'==== {dt_string}: UNIT {u_idx} (fault {fi} {execution_fault_mode_name}, seed {si}, '
+              f'vis {percent_visible_states}, noise {MINIGRID_ACTION_PROB}, fr {fault_rate}) ====')
+
+        output = run_NON_DETERMINSTIC_single_experiment_PO(
+            domain_name=domain_name,
+            ml_model_name=ml_model_name,
+            render_mode=render_mode,
+            max_exec_len=max_exec_len,
+            debug_print=debug_print,
+            execution_fault_mode_name=execution_fault_mode_name,
+            instance_seed=instance_seed * SEED_BLOCK,  # block base; run_PO derives offsets
+            fault_probability=fault_rate,
+            percent_visible_states=percent_visible_states,
+            possible_fault_mode_names=candidate_specs,
+            num_candidate_fault_modes=len(candidate_specs),
+            epsilon=epsilon,
+            unknown_fault_rate=unknown_fault_rate,
+            fault_rate_candidates=fault_rate_candidates,
+            fixed_candidate_fault_modes=candidate_specs,
+        )
+        if not output:
+            skipped += 1
+            continue
+
+        output["epsilon"] = epsilon
+        output["experiment_num"] = instance_index + 1
+        output["real_fault_prob"] = fault_rate
+        output["minigrid_noise"] = MINIGRID_ACTION_PROB
+        output["fault_index"] = fi
+        output["seed_index"] = si
+        output["map_desc"] = f"{domain_name}_noise{MINIGRID_ACTION_PROB}_seed_{instance_seed}"
+        output["hardcoded_policy"] = f"{domain_name}_{ml_model_name}_noise{MINIGRID_ACTION_PROB}"
+        output["domain_name"] = domain_name
+        output["benchmark_way"] = "minigrid_PO"
+        output["execution_fault"] = execution_fault_mode_name
+        records.append(output)
+
+    if not records:
+        print("No successful MiniGrid experiments produced (all trajectories failed).")
+        return
+
+    print(f"\nNumber of diagnosis runs: {len(records)} (skipped {skipped})")
+
+    noise_tok = str(MINIGRID_ACTION_PROB).replace(".", "_")
+    fr_tok = str(fault_rate).replace(".", "_")
+    eps_tok = str(epsilon).replace(".", "_")
+    file_path = (f"minigrid_PO_{fr_token}_noise_{noise_tok}_fr_{fr_tok}_eps_{eps_tok}"
+                 f"_UNITS_{unit_start}-{unit_end}")
+    # Keep per-task xlsx in an xlsx/ subfolder of the run folder, so it sits alongside logs/
+    # and plots/ (run_folder/{xlsx,logs,plots}) instead of loose at the top.
+    output_dir = _os.path.join(domain_results_dir(domain_name, run_folder), "xlsx")
+    _os.makedirs(output_dir, exist_ok=True)
+    exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)
+    print(f"file was written at: {output_dir}/{file_path}.xlsx")
+
+
 def single_experiment_FrozenLake_NON_DETERMINSTIC():
     # changable test settings - strong fault model intermittent faults (SIF)
 
