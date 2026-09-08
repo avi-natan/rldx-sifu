@@ -1,20 +1,23 @@
-"""Curves for the MiniGrid PO fault-diagnosis benchmark (item 5), for one noise level.
+"""Curves for the MiniGrid PO fault-diagnosis benchmark (item 5), one noise level.
+
+Matches the project convention (see plot_fault_rate_view.py): the metric is the AVG REAL-FAULT
+RANK (mean +/- SEM), lower = better (1 = true fault ranked first, 10 = last of the 10 candidates).
 
 Reads all per-task result xlsx in
-    experimental results/MiniGrid_Empty_16x16_v0/minigrid_bench_noise{TAG}/
-(default TAG = 0_7) and writes accuracy curves into a plots/ subfolder there, plus a
-PLOT_PROVENANCE.txt (standing project rule).
+    experimental results/MiniGrid_Empty_16x16_v0/minigrid_bench_noise{TAG}/xlsx/
+(default TAG = 0_7; falls back to loose xlsx at the run-folder top) and writes into a plots/
+subfolder there, plus a PLOT_PROVENANCE.txt.
 
-Curves produced:
-  1. accuracy vs VISIBILITY (top-1, top-3) + mean-rank            -> the partial-observability curve
-  2. top-1 vs VISIBILITY, one line per fault rate                 -> both difficulty axes at once
-  3. accuracy vs FAULT RATE (top-1, top-3)                        -> signal-strength curve
-  4. per-FAULT top-1 (sorted)                                     -> the detectability gradient
+Figures:
+  A. rank vs VISIBILITY, one line per fault rate         -> ..._rank_vs_visibility_by_fr.png
+  C. rank vs FAULT RATE, one line per visibility         -> ..._rank_vs_faultrate_by_visibility.png
+  F. per-FAULT avg rank (sorted)                         -> ..._rank_per_fault.png
 
 Run from repo root:
   ./.venv_domains/Scripts/python.exe "experimental plot scripts/plot_minigrid_benchmark.py" [noise_tag]
 """
 import os, sys, glob, re
+import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
@@ -25,7 +28,11 @@ from plot_provenance import write_plot_provenance
 
 NOISE_TAG = sys.argv[1] if len(sys.argv) > 1 else "0_7"
 N_CANDIDATES = 10
-RANDOM_TOP1 = 1.0 / N_CANDIDATES   # 0.10 baseline reference
+RANDOM_RANK = (N_CANDIDATES + 1) / 2.0   # 5.5 = expected rank under random ranking
+
+RANK_COL = "real_fault_rank"
+FR_COL = "real_fault_prob"
+VIS_COL = "percent_visible_states"
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(SCRIPT_DIR)
@@ -40,8 +47,6 @@ def fault_name(spec):
 
 
 def load():
-    # per-task xlsx live in run_folder/xlsx/ (current layout); fall back to loose at the top
-    # (older runs) for backward compatibility.
     files = glob.glob(os.path.join(RESULTS_DIR, "xlsx", "*.xlsx"))
     if not files:
         files = [f for f in glob.glob(os.path.join(RESULTS_DIR, "*.xlsx")) if "MERGED" not in f]
@@ -49,75 +54,93 @@ def load():
         raise SystemExit(f"no result xlsx found in {RESULTS_DIR}")
     df = pd.concat([pd.read_excel(f) for f in files], ignore_index=True)
     df["fault"] = df["execution_fault"].map(fault_name)
-    return df, files
+    return df
+
+
+def _mean_sem(series):
+    m = series.mean()
+    sem = series.std(ddof=1) / np.sqrt(len(series)) if len(series) > 1 else 0.0
+    return m, sem
+
+
+def plot_by_series(df, x_col, series_col, x_label, series_label, title, out_path,
+                   series_fmt=lambda v: f"{v:g}"):
+    """y = mean real-fault rank (+/- SEM); one line per value of series_col; x = x_col."""
+    plt.figure(figsize=(7.5, 4.8))
+    cmap = plt.get_cmap("viridis")
+    series_vals = sorted(df[series_col].dropna().unique())
+    for i, sv in enumerate(series_vals):
+        sub = df[df[series_col] == sv]
+        xs = sorted(sub[x_col].dropna().unique())
+        ys, sems = [], []
+        for x in xs:
+            m, se = _mean_sem(sub[sub[x_col] == x][RANK_COL])
+            ys.append(m); sems.append(se)
+        color = cmap(i / max(1, len(series_vals) - 1))
+        plt.errorbar(xs, ys, yerr=sems, fmt="o-", capsize=3, markersize=6,
+                     linewidth=1.8, color=color, label=f"{series_label}={series_fmt(sv)}")
+    plt.axhline(RANDOM_RANK, ls="--", color="grey", lw=1, label=f"random ({RANDOM_RANK:g})")
+    plt.xticks(sorted(df[x_col].dropna().unique()))
+    plt.xlabel(x_label)
+    plt.ylabel("Avg real-fault rank  (1 = best, 10 = worst)")
+    plt.ylim(1, N_CANDIDATES)
+    plt.title(title)
+    plt.grid(True, alpha=0.3)
+    plt.legend(title=series_label, fontsize=8, title_fontsize=9)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"  saved {out_path}")
+    return out_path
+
+
+def plot_per_fault(df, title, out_path):
+    """Per-fault avg real-fault rank (sorted best->worst) = the detectability gradient."""
+    g = df.groupby("fault")[RANK_COL]
+    means = g.mean().sort_values()
+    sems = g.apply(lambda s: s.std(ddof=1) / np.sqrt(len(s)) if len(s) > 1 else 0.0)[means.index]
+    plt.figure(figsize=(11, 5))
+    colors = ["#2ca02c" if v <= 3 else ("#d62728" if v >= RANDOM_RANK else "#1f77b4") for v in means.values]
+    plt.bar(range(len(means)), means.values, yerr=sems.values, capsize=2, color=colors)
+    plt.axhline(RANDOM_RANK, ls="--", color="grey", lw=1, label=f"random ({RANDOM_RANK:g})")
+    plt.xticks(range(len(means)), means.index, rotation=90, fontsize=7)
+    plt.ylabel("Avg real-fault rank  (1 = best)")
+    plt.ylim(1, N_CANDIDATES)
+    plt.title(title)
+    plt.legend(fontsize=8); plt.grid(True, alpha=0.3, axis="y")
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"  saved {out_path}")
+    return out_path
 
 
 def main():
-    df, files = load()
+    df = load()
     os.makedirs(PLOTS_DIR, exist_ok=True)
     noise = df["minigrid_noise"].iloc[0]
-    title_suffix = f"MiniGrid Empty-16x16, noise {noise}  (N={len(df)}, {N_CANDIDATES} candidates)"
+    suffix = f"MiniGrid Empty-16x16, noise {noise} (N={len(df)}, {N_CANDIDATES} candidates)"
+    tag = f"minigrid_noise{NOISE_TAG}"
     created = []
 
-    # ---- 1. accuracy vs visibility (+ mean rank) ----
-    g = df.groupby("percent_visible_states")
-    vis = sorted(df["percent_visible_states"].unique())
-    top1 = [g.get_group(v)["execution_fault_in_top1"].mean() for v in vis]
-    top3 = [g.get_group(v)["execution_fault_in_top3"].mean() for v in vis]
-    rank = [g.get_group(v)["real_fault_rank"].mean() for v in vis]
-    fig, ax = plt.subplots(figsize=(7, 4.5))
-    ax.plot(vis, top1, "o-", color="#1f77b4", label="top-1 accuracy")
-    ax.plot(vis, top3, "s-", color="#2ca02c", label="top-3 accuracy")
-    ax.axhline(RANDOM_TOP1, ls="--", color="grey", lw=1, label=f"random top-1 ({RANDOM_TOP1:.2f})")
-    ax.set_xlabel("% of trajectory observed"); ax.set_ylabel("accuracy"); ax.set_ylim(0, 1)
-    ax2 = ax.twinx(); ax2.plot(vis, rank, "^:", color="#d62728", label="mean rank")
-    ax2.set_ylabel("mean true-fault rank (1=best, 10=worst)"); ax2.set_ylim(1, N_CANDIDATES)
-    ax.set_title("Diagnosis accuracy vs visibility\n" + title_suffix)
-    l1, la1 = ax.get_legend_handles_labels(); l2, la2 = ax2.get_legend_handles_labels()
-    ax.legend(l1 + l2, la1 + la2, loc="lower right", fontsize=8); ax.grid(alpha=0.3)
-    fig.tight_layout(); p = os.path.join(PLOTS_DIR, "1_accuracy_vs_visibility.png")
-    fig.savefig(p, dpi=150); plt.close(fig); created.append(p)
+    created.append(plot_by_series(
+        df, x_col=VIS_COL, series_col=FR_COL,
+        x_label="Visibility (% observed states)", series_label="fault rate",
+        title=f"MiniGrid PO: rank vs visibility, by fault rate\n{suffix}",
+        out_path=os.path.join(PLOTS_DIR, f"{tag}_rank_vs_visibility_by_fr.png")))
 
-    # ---- 2. top-1 vs visibility, one line per fault rate ----
-    fig, ax = plt.subplots(figsize=(7, 4.5))
-    for fr, color in zip(sorted(df["real_fault_prob"].unique()), ["#9467bd", "#1f77b4", "#ff7f0e"]):
-        sub = df[df["real_fault_prob"] == fr].groupby("percent_visible_states")["execution_fault_in_top1"].mean()
-        ax.plot(sub.index, sub.values, "o-", color=color, label=f"fault rate {fr}")
-    ax.axhline(RANDOM_TOP1, ls="--", color="grey", lw=1, label=f"random ({RANDOM_TOP1:.2f})")
-    ax.set_xlabel("% of trajectory observed"); ax.set_ylabel("top-1 accuracy"); ax.set_ylim(0, 1)
-    ax.set_title("Top-1 vs visibility, by fault rate\n" + title_suffix)
-    ax.legend(fontsize=8); ax.grid(alpha=0.3)
-    fig.tight_layout(); p = os.path.join(PLOTS_DIR, "2_top1_vs_visibility_by_faultrate.png")
-    fig.savefig(p, dpi=150); plt.close(fig); created.append(p)
+    created.append(plot_by_series(
+        df, x_col=FR_COL, series_col=VIS_COL,
+        x_label="Fault rate", series_label="visibility",
+        title=f"MiniGrid PO: rank vs fault rate, by visibility\n{suffix}",
+        out_path=os.path.join(PLOTS_DIR, f"{tag}_rank_vs_faultrate_by_visibility.png"),
+        series_fmt=lambda v: f"{int(v)}%"))
 
-    # ---- 3. accuracy vs fault rate ----
-    g = df.groupby("real_fault_prob"); frs = sorted(df["real_fault_prob"].unique())
-    top1 = [g.get_group(fr)["execution_fault_in_top1"].mean() for fr in frs]
-    top3 = [g.get_group(fr)["execution_fault_in_top3"].mean() for fr in frs]
-    fig, ax = plt.subplots(figsize=(7, 4.5))
-    ax.plot(frs, top1, "o-", color="#1f77b4", label="top-1 accuracy")
-    ax.plot(frs, top3, "s-", color="#2ca02c", label="top-3 accuracy")
-    ax.axhline(RANDOM_TOP1, ls="--", color="grey", lw=1, label=f"random top-1 ({RANDOM_TOP1:.2f})")
-    ax.set_xlabel("injected fault rate"); ax.set_ylabel("accuracy"); ax.set_ylim(0, 1)
-    ax.set_xticks(frs); ax.set_title("Diagnosis accuracy vs fault rate\n" + title_suffix)
-    ax.legend(fontsize=8); ax.grid(alpha=0.3)
-    fig.tight_layout(); p = os.path.join(PLOTS_DIR, "3_accuracy_vs_faultrate.png")
-    fig.savefig(p, dpi=150); plt.close(fig); created.append(p)
+    created.append(plot_per_fault(
+        df, title=f"MiniGrid PO: avg rank per fault (label = L,R,F -> mapping)\n{suffix}",
+        out_path=os.path.join(PLOTS_DIR, f"{tag}_rank_per_fault.png")))
 
-    # ---- 4. per-fault top-1 (detectability gradient) ----
-    pf = df.groupby("fault")["execution_fault_in_top1"].mean().sort_values()
-    fig, ax = plt.subplots(figsize=(10, 5))
-    colors = ["#d62728" if v < RANDOM_TOP1 * 2 else "#1f77b4" for v in pf.values]
-    ax.bar(range(len(pf)), pf.values, color=colors)
-    ax.axhline(RANDOM_TOP1, ls="--", color="grey", lw=1, label=f"random ({RANDOM_TOP1:.2f})")
-    ax.set_xticks(range(len(pf))); ax.set_xticklabels(pf.index, rotation=90, fontsize=7)
-    ax.set_ylabel("top-1 accuracy"); ax.set_ylim(0, 1)
-    ax.set_title("Per-fault top-1 (detectability gradient; label = L,R,F -> mapping)\n" + title_suffix)
-    ax.legend(fontsize=8); ax.grid(alpha=0.3, axis="y")
-    fig.tight_layout(); p = os.path.join(PLOTS_DIR, "4_per_fault_top1.png")
-    fig.savefig(p, dpi=150); plt.close(fig); created.append(p)
-
-    write_plot_provenance(PLOTS_DIR, created, input_sources=[RESULTS_DIR + " (per-task xlsx)"])
+    write_plot_provenance(PLOTS_DIR, created, input_sources=[os.path.join(RESULTS_DIR, "xlsx")])
     print("wrote:", *[os.path.basename(c) for c in created])
 
 
