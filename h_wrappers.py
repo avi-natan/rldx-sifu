@@ -318,6 +318,27 @@ def set_minigrid_action_prob(prob):
     MINIGRID_ACTION_PROB = prob
     print(f"[MiniGrid] env noise + policy set to noise_prob={prob}")
 
+
+_MINIGRID_CUSTOM_REGISTERED = False
+
+def _register_minigrid_custom_envs():
+    """Register our custom (non-preset) MiniGrid env IDs once. SimpleCrossing at 11x11 with 2
+    crossings is NOT a MiniGrid preset (only S9N1/2/3 and S11N5 exist), so we self-register it as
+    `MiniGrid-SimpleCrossing-S11N2-v0` (walls) with dashes so it round-trips from the domain code
+    key `MiniGrid_SimpleCrossing_S11N2_v0` via replace('_','-')."""
+    global _MINIGRID_CUSTOM_REGISTERED
+    if _MINIGRID_CUSTOM_REGISTERED:
+        return
+    import gymnasium as _gym
+    from gymnasium.envs.registration import registry as _registry
+    from minigrid.core.world_object import Wall
+    if "MiniGrid-SimpleCrossing-S11N2-v0" not in _registry:
+        _gym.register(id="MiniGrid-SimpleCrossing-S11N2-v0",
+                      entry_point="minigrid.envs:CrossingEnv",
+                      kwargs=dict(size=11, num_crossings=2, obstacle_type=Wall))
+    _MINIGRID_CUSTOM_REGISTERED = True
+
+
 def make_wrapped_env(domain_name, render_mode):
     kwargs = DOMAIN_KWARGS.get(domain_name, {})
     is_minigrid = domain_name.startswith("MiniGrid")
@@ -326,6 +347,7 @@ def make_wrapped_env(domain_name, render_mode):
 
     if is_minigrid:
         import minigrid  # noqa: F401  (registers the MiniGrid-* envs with gymnasium)
+        _register_minigrid_custom_envs()  # + our custom IDs (SimpleCrossing-S11N2)
         # disable_env_checker: drop the PassiveEnvChecker wrapper (per-step overhead, and it
         # would reject our stubbed None observation — see MiniGridSetStepWrapper).
         base_env = used_gym.make(
