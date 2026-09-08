@@ -147,6 +147,17 @@ if __name__ == '__main__':
         help="Number of MiniGrid instance groups to split into (default: 10)."
     )
 
+    parser.add_argument(
+        "--mg_noise",
+        type=float,
+        default=0.7,
+        choices=[0.3, 0.5, 0.7],
+        help="MiniGrid Empty ONLY: env action-success probability. Selects BOTH the env noise "
+             "(SeededStochasticActionWrapper prob) AND the matching trained policy "
+             "(models/PPO/..._noise{mg_noise}.zip). 0.7=diagnosable, 0.5=middle, 0.3=very noisy. "
+             "Ignored for non-MiniGrid domains."
+    )
+
     args = parser.parse_args()
 
     try:
@@ -217,6 +228,9 @@ if __name__ == '__main__':
                 map_end=map_end,
             )
         elif args.minigrid:
+            # MiniGrid Empty ONLY: select env noise + the matching trained policy together.
+            import h_wrappers
+            h_wrappers.set_minigrid_action_prob(args.mg_noise)
             MG_INSTANCES = 100
             # Work units = instances x 5 visibilities x 3 fault rates (one diagnosis each,
             # ~1 min). --mg_group present -> run only this task's contiguous slice of them.

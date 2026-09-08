@@ -297,11 +297,26 @@ DOMAIN_KWARGS = {
 # MiniGrid is deterministic by default; we inject transition stochasticity (the analog
 # of FrozenLake "slippery") with SeededStochasticActionWrapper: with probability
 # MINIGRID_ACTION_PROB the intended action executes, otherwise a random action is taken.
-# Currently 0.3 (70% noise) -> a strongly stochastic domain. The trained obs-policy loaded in
-# h_rl_models is selected to MATCH this value (models/PPO/..._noise{MINIGRID_ACTION_PROB}.zip),
-# so the policy is trained under the same noise it is diagnosed under. Trained policies exist
-# for 0.3 and 0.7; changing this constant switches BOTH the env noise and the loaded policy.
-MINIGRID_ACTION_PROB = 0.3
+# The trained obs-policy loaded in h_rl_models is selected to MATCH this value
+# (models/PPO/..._noise{MINIGRID_ACTION_PROB}.zip), so the policy is always trained under the
+# same noise it is diagnosed under. This is the single knob that switches BOTH the env noise AND
+# the loaded policy together -- ONLY meaningful for the MiniGrid Empty domain (that is the only
+# domain with per-noise trained policies). `main.py --mg_noise {0.3,0.5,0.7}` sets it via
+# set_minigrid_action_prob() for a benchmark run; the default is the diagnosable 0.7.
+MINIGRID_SUPPORTED_NOISE = (0.3, 0.5, 0.7)   # the noise levels we have trained Empty policies for
+MINIGRID_ACTION_PROB = 0.7
+
+def set_minigrid_action_prob(prob):
+    """Set the MiniGrid Empty env-noise level (and thereby the matching policy that h_rl_models
+    loads). Only the values in MINIGRID_SUPPORTED_NOISE are allowed, since each needs a trained
+    policy at models/PPO/..._noise{prob}.zip. Call this from main BEFORE running a MiniGrid
+    experiment. No effect on non-MiniGrid domains (they never read MINIGRID_ACTION_PROB)."""
+    global MINIGRID_ACTION_PROB
+    if prob not in MINIGRID_SUPPORTED_NOISE:
+        raise ValueError(f"MiniGrid noise {prob} not supported; trained policies exist for "
+                         f"{MINIGRID_SUPPORTED_NOISE}.")
+    MINIGRID_ACTION_PROB = prob
+    print(f"[MiniGrid] env noise + policy set to noise_prob={prob}")
 
 def make_wrapped_env(domain_name, render_mode):
     kwargs = DOMAIN_KWARGS.get(domain_name, {})
