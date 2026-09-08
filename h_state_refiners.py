@@ -38,4 +38,5 @@ refiners = {
     "FrozenLake_v1": frozen_lake_refiner,
     "MiniGrid_Empty_Random_6x6_v0": minigrid_refiner,
     "MiniGrid_Empty_16x16_v0": minigrid_refiner,
+    "MiniGrid_SimpleCrossing_S11N2_v0": minigrid_refiner,
 }

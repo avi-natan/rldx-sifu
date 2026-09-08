@@ -29,12 +29,19 @@ def make_minigrid_view_comparator(domain_name, render_seed=0):
     O(1) dict lookup rather than a gen_obs() render — critical because the Monte-Carlo hit
     test runs this hundreds of thousands of times.
     """
-    from h_wrappers import build_minigrid_view_maps
-    state2view, _ = build_minigrid_view_maps(domain_name, render_seed=render_seed)
+    from h_wrappers import (build_minigrid_view_maps, MINIGRID_PER_SEED_LAYOUT,
+                            _MINIGRID_ACTIVE_MAPS)
+    per_seed = domain_name in MINIGRID_PER_SEED_LAYOUT
+    # Fixed-layout domains (Empty): one precomputed map. Per-seed-layout domains (SimpleCrossing):
+    # the map differs per instance, so read the CURRENT instance's map (set by the wrapper on reset).
+    fixed_map = None if per_seed else build_minigrid_view_maps(domain_name, render_seed=render_seed)[0]
 
     def view_compare(raw_state1, raw_state2):
+        state2view = _MINIGRID_ACTIVE_MAPS.get(domain_name) if per_seed else fixed_map
         k1 = (int(raw_state1[0]), int(raw_state1[1]), int(raw_state1[2]))
         k2 = (int(raw_state2[0]), int(raw_state2[1]), int(raw_state2[2]))
+        if state2view is None:   # per-seed but no active map yet (shouldn't happen mid-diagnosis)
+            return k1 == k2
         return state2view.get(k1, k1) == state2view.get(k2, k2)
 
     return view_compare
@@ -60,4 +67,5 @@ comparators = {
     # MiniGrid is partially observed -> compare by egocentric VIEW (built lazily on first use).
     "MiniGrid_Empty_Random_6x6_v0": _lazy_minigrid_view_comparator("MiniGrid_Empty_Random_6x6_v0"),
     "MiniGrid_Empty_16x16_v0": _lazy_minigrid_view_comparator("MiniGrid_Empty_16x16_v0"),
+    "MiniGrid_SimpleCrossing_S11N2_v0": _lazy_minigrid_view_comparator("MiniGrid_SimpleCrossing_S11N2_v0"),
 }

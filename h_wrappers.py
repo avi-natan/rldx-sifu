@@ -211,6 +211,45 @@ def build_minigrid_view_maps(domain_name, render_seed=0):
     return maps
 
 
+# Domains whose GRID changes with the seed (procedural layouts) -> the view maps are PER-INSTANCE
+# (per layout), the layout is fixed per instance, and only the noise varies per Monte-Carlo trace.
+# (Empty's grid is fixed regardless of seed, so it is NOT here and keeps the simple reset.)
+MINIGRID_PER_SEED_LAYOUT = {"MiniGrid_SimpleCrossing_S11N2_v0"}
+
+_MINIGRID_LAYOUT_VIEW_MAPS = {}   # (domain, layout_seed) -> (state2view, view2states)
+_MINIGRID_ACTIVE_MAPS = {}        # domain -> the CURRENT instance's state2view (per-seed-layout only)
+
+def build_minigrid_view_maps_for_layout(domain_name, layout_seed):
+    """Wall-AWARE view maps for ONE specific per-seed layout (e.g. SimpleCrossing). Enumerates only
+    the FREE (non-wall) interior cells x 4 dirs -- the agent can never stand on a wall, so those
+    cells are not valid states (this is the "walls inside the map" effect). Cached by
+    (domain, layout_seed) so each instance's map is built once."""
+    key = (domain_name, int(layout_seed))
+    if key in _MINIGRID_LAYOUT_VIEW_MAPS:
+        return _MINIGRID_LAYOUT_VIEW_MAPS[key]
+    import minigrid  # noqa: F401
+    _register_minigrid_custom_envs()
+    env = gymnasium.make(domain_name.replace('_', '-'))
+    env.reset(seed=int(layout_seed))          # this layout is a deterministic function of the seed
+    u = env.unwrapped
+    state2view, view2states = {}, defaultdict(list)
+    for x in range(1, u.width - 1):
+        for y in range(1, u.height - 1):
+            c = u.grid.get(x, y)
+            if c is not None and not c.can_overlap():   # wall/obstacle -> not a valid agent cell
+                continue
+            for d in range(4):
+                u.agent_pos = (x, y); u.agent_dir = d
+                obs = u.gen_obs()
+                vb = (obs["image"].tobytes(), int(obs["direction"]))
+                state2view[(x, y, d)] = vb
+                view2states[vb].append((x, y, d))
+    env.close()
+    maps = (state2view, dict(view2states))
+    _MINIGRID_LAYOUT_VIEW_MAPS[key] = maps
+    return maps
+
+
 class MiniGridSetStepWrapper(gymnasium.Wrapper):
     """Makes a MiniGrid Empty-room env diagnosable under PARTIAL OBSERVABILITY.
 
@@ -231,8 +270,15 @@ class MiniGridSetStepWrapper(gymnasium.Wrapper):
     """
     def __init__(self, env, domain_name):
         super().__init__(env)
+        self._domain_name = domain_name
+        self._per_seed_layout = domain_name in MINIGRID_PER_SEED_LAYOUT
         self.unwrapped.gen_obs = lambda *a, **k: None   # perf: the observation is never used
-        self._state2view, self._view_to_states = build_minigrid_view_maps(domain_name)
+        self._layout_seed = None
+        if self._per_seed_layout:
+            # per-instance layout -> maps are built lazily on the first reset (see reset()).
+            self._state2view, self._view_to_states = None, None
+        else:
+            self._state2view, self._view_to_states = build_minigrid_view_maps(domain_name)
         self._belief_rng = random.Random(0)
 
     def _raw(self):
@@ -241,11 +287,29 @@ class MiniGridSetStepWrapper(gymnasium.Wrapper):
         return (int(pos[0]), int(pos[1]), int(u.agent_dir))
 
     def reset(self, seed=None, options=None):
-        # Full reset (rebuilds the grid). A "fast reset" skipping the rebuild was tried and
-        # reverted: Empty-16x16 grid generation consumes np_random draws, so skipping it shifts
-        # the RNG stream and changes results.
+        seed = 0 if seed is None else seed
+        if self._per_seed_layout:
+            # PER-SEED-LAYOUT domains (e.g. SimpleCrossing): the grid changes with the seed, but a
+            # diagnosis must stay on ONE layout while the Monte-Carlo noise varies per trace. So:
+            #  - the FIRST reset fixes the instance's layout (_layout_seed) + builds its view maps;
+            #  - EVERY reset rebuilds that SAME layout (reset from _layout_seed);
+            #  - then the NOISE + belief RNGs are (re)seeded from the per-call seed -> noise/belief
+            #    vary per trace, layout stays fixed.
+            if self._layout_seed is None:
+                self._layout_seed = int(seed)
+                self._state2view, self._view_to_states = build_minigrid_view_maps_for_layout(
+                    self._domain_name, self._layout_seed)
+                _MINIGRID_ACTIVE_MAPS[self._domain_name] = self._state2view  # the comparator reads this
+            obs, info = self.env.reset(seed=self._layout_seed, options=options)  # SAME layout every time
+            self.unwrapped.np_random, _ = seeding.np_random(int(seed))          # noise <- per-call seed
+            self._belief_rng = random.Random(seed)                              # belief <- per-call seed
+            return self._raw(), info
+
+        # Fixed-layout domains (Empty): full reset (rebuilds the same grid). A "fast reset" skipping
+        # the rebuild was tried and reverted: Empty grid generation consumes np_random draws, so
+        # skipping it shifts the RNG stream and changes results.
         obs, info = self.env.reset(seed=seed, options=options)
-        self._belief_rng = random.Random(seed if seed is not None else 0)
+        self._belief_rng = random.Random(seed)
         return self._raw(), info
 
     def set_state(self, raw_state):
