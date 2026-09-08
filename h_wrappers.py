@@ -297,9 +297,11 @@ DOMAIN_KWARGS = {
 # MiniGrid is deterministic by default; we inject transition stochasticity (the analog
 # of FrozenLake "slippery") with SeededStochasticActionWrapper: with probability
 # MINIGRID_ACTION_PROB the intended action executes, otherwise a random action is taken.
-# Keep <= 0.7 (>= 30% noise) so the domain is genuinely stochastic, comparable to
-# FrozenLake slippery / Taxi rainy.
-MINIGRID_ACTION_PROB = 0.7
+# Currently 0.3 (70% noise) -> a strongly stochastic domain. The trained obs-policy loaded in
+# h_rl_models is selected to MATCH this value (models/PPO/..._noise{MINIGRID_ACTION_PROB}.zip),
+# so the policy is trained under the same noise it is diagnosed under. Trained policies exist
+# for 0.3 and 0.7; changing this constant switches BOTH the env noise and the loaded policy.
+MINIGRID_ACTION_PROB = 0.3
 
 def make_wrapped_env(domain_name, render_mode):
     kwargs = DOMAIN_KWARGS.get(domain_name, {})
