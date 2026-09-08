@@ -158,6 +158,14 @@ if __name__ == '__main__':
              "Ignored for non-MiniGrid domains."
     )
 
+    parser.add_argument(
+        "--mg_fault_rate",
+        type=float,
+        default=0.5,
+        help="MiniGrid ONLY: the single injected fault-firing probability for this run "
+             "(the benchmark uses one fault_rate per run; sweep it across runs)."
+    )
+
     args = parser.parse_args()
 
     try:
@@ -230,11 +238,12 @@ if __name__ == '__main__':
         elif args.minigrid:
             # MiniGrid Empty ONLY: select env noise + the matching trained policy together.
             import h_wrappers
+            from p_single_experiments import MINIGRID_FAULTS, MINIGRID_VISIBILITIES
             h_wrappers.set_minigrid_action_prob(args.mg_noise)
-            MG_INSTANCES = 100
-            # Work units = instances x 5 visibilities x 3 fault rates (one diagnosis each,
-            # ~1 min). --mg_group present -> run only this task's contiguous slice of them.
-            MG_TOTAL_UNITS = MG_INSTANCES * 5 * 3
+            MG_NUM_SEEDS = 3
+            # ONE run = one (noise, fault_rate); the FIXED benchmark = 26 faults x seeds, with
+            # visibility swept inside. Work-units = fault x seed x visibility, split for the array.
+            MG_TOTAL_UNITS = len(MINIGRID_FAULTS) * MG_NUM_SEEDS * len(MINIGRID_VISIBILITIES)
             unit_start, unit_end = 0, None
             if args.mg_group is not None:
                 group_size = MG_TOTAL_UNITS // args.mg_num_groups
@@ -246,7 +255,8 @@ if __name__ == '__main__':
             multiple_experiment_MiniGrid_fault_benchmark(
                 epsilon=args.epsilon,
                 unknown_fault_rate=args.unknown_fault_rate,
-                num_instances=MG_INSTANCES,
+                fault_rate=args.mg_fault_rate,
+                num_seeds=MG_NUM_SEEDS,
                 run_folder=args.run_folder,
                 unit_start=unit_start,
                 unit_end=unit_end,
