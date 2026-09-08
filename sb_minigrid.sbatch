@@ -23,6 +23,10 @@
 #   done
 # (xlsx land in $R via -o below; all 3 fault rates share the one 0.7 folder, distinct filenames.)
 #
+# UNKNOWN fault rate: export MG_UFR=1 to add -ufr (diagnoser searches fault-rate candidates
+# 0.1..1.0 instead of being told the rate) -> ~10x more Monte-Carlo, ~10x slower. Output goes to a
+# distinct ..._ufr folder so it never clashes with the known-fr run. Bump --time at submission.
+#
 # CPU note: the diagnoser is single-threaded Monte-Carlo -> exactly ONE core per task.
 
 module load anaconda
@@ -36,7 +40,8 @@ export NUMEXPR_NUM_THREADS=1
 MG_NOISE=${MG_NOISE:-0.7}
 MG_FR=${MG_FR:-0.5}
 NOISE_TAG=$(echo "$MG_NOISE" | tr '.' '_')
-FR_TAG=$(echo "$MG_FR" | tr '.' '_')
+UFR_FLAG=""; UFR_TAG=""
+if [ "${MG_UFR:-0}" = "1" ]; then UFR_FLAG="-ufr"; UFR_TAG="_ufr"; fi
 
 mkdir -p experiment_logs/minigrid_PO
 
@@ -46,5 +51,6 @@ python main.py \
     --mg_num_groups 390 \
     --mg_noise ${MG_NOISE} \
     --mg_fault_rate ${MG_FR} \
+    ${UFR_FLAG} \
     --epsilon 0.04 \
-    -o minigrid_bench_noise${NOISE_TAG}
+    -o minigrid_bench_noise${NOISE_TAG}${UFR_TAG}
