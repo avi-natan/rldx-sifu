@@ -1,7 +1,7 @@
 PLOT PROVENANCE
 ===============
 These plots were created by : C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental plot scripts\plot_minigrid_benchmark.py
-Generated                   : 2026-09-09 15:34:15
+Generated                   : 2026-09-09 15:53:41
 Command                     : experimental plot scripts/plot_minigrid_benchmark.py 0_5 MiniGrid_SimpleCrossing_S11N2_v0
 
 Plots created in this folder (C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\MiniGrid_SimpleCrossing_S11N2_v0\known\minigrid_bench_noise0_5\plots):

@@ -124,6 +124,11 @@ def plot_pooled(df, x_col, x_label, title, out_path, y_col=RANK_COL,
 def main():
     df = load()
     os.makedirs(PLOTS_DIR, exist_ok=True)
+    # Write a single merged xlsx (all per-task rows in one file) at the run-folder top, for
+    # convenient analysis. Consistent across domains/runs; plotting itself reads the per-task xlsx.
+    merged_path = os.path.join(RESULTS_DIR, f"minigrid_bench_noise{NOISE_TAG}_MERGED.xlsx")
+    df.to_excel(merged_path, index=False)
+    print(f"  wrote merged {merged_path} ({len(df)} rows)")
     noise = df["minigrid_noise"].iloc[0]
     _pretty = {"MiniGrid_Empty_16x16_v0": "MiniGrid Empty-16x16",
                "MiniGrid_SimpleCrossing_S11N2_v0": "MiniGrid SimpleCrossing-S11N2"}.get(DOMAIN, DOMAIN)
