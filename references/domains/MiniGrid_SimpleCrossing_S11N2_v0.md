@@ -117,8 +117,19 @@ Driver: `multiple_experiment_MiniGrid_fault_benchmark(..., domain_name="MiniGrid
   avg_return 0.929, avg_steps 38.2. Both promoted to `models/PPO/..._noise{0.5,0.7}.zip`. Full
   diagnosis pipeline validated end-to-end (per-layout tabulation; trajectory + diagnoser share one
   layout; ranks produced; no drops).
-- **Benchmark:** not run yet — ready to launch (`MG_DOMAIN=crossing sbatch sb_minigrid.sbatch`).
-  Fill in avg real-fault rank per noise once run.
+- **Benchmark (known-fr, fr 0.5, ε 0.04, Option A diverse layouts, 390 instances/noise):**
+
+  | noise | mean real-fault rank | top-1 | top-3 |
+  |---|---|---|---|
+  | 0.5 | 1.979 | 0.546 | 0.869 |
+  | 0.7 | 1.608 | 0.708 | 0.923 |
+
+  Clean monotonic gain with visibility (0.5: rank 3.08@20% → 1.24@100%; 0.7: 2.12@20% → 1.10@100%).
+  **Markedly more diagnosable than Empty** at the same noise (Empty 2.34@0.7 / 2.93@0.5) — walls+gaps
+  constrain trajectories and the longer rollouts (median ~119 states @0.5, ~99 @0.7) give more signal.
+  Truncations at the cap: 240/390 @0.5, 145/390 @0.7, **0 no-fault red-flags** (all expected
+  goal-blocking faults). Plots in each run's `plots/` + `known/noise_comparison/plots/`. A noise-0.5
+  **ufr** variant is also run (`unknown/minigrid_bench_noise0_5_ufr/`).
 
 ## 12. Gotchas / caveats
 - **Policy must GENERALIZE** across layouts — a policy that memorized one layout will misnavigate

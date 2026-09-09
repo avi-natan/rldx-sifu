@@ -1,0 +1,16 @@
+PLOT PROVENANCE
+===============
+These plots were created by : C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental plot scripts\plot_minigrid_benchmark.py
+Generated                   : 2026-09-09 15:34:22
+Command                     : experimental plot scripts/plot_minigrid_benchmark.py 0_7 MiniGrid_SimpleCrossing_S11N2_v0
+
+Plots created in this folder (C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\MiniGrid_SimpleCrossing_S11N2_v0\known\minigrid_bench_noise0_7\plots):
+  - minigrid_noise0_7_rank_vs_visibility_by_fr.png
+  - minigrid_noise0_7_rank_vs_faultrate_by_visibility.png
+  - minigrid_noise0_7_rank_vs_visibility_pooled.png
+  - minigrid_noise0_7_rank_vs_faultrate_pooled.png
+  - minigrid_noise0_7_time_vs_visibility.png
+  - minigrid_noise0_7_time_vs_faultrate.png
+
+Input data read from:
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental results\MiniGrid_SimpleCrossing_S11N2_v0\known\minigrid_bench_noise0_7\xlsx

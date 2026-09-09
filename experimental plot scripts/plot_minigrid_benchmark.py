@@ -28,6 +28,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from plot_provenance import write_plot_provenance
 
 NOISE_TAG = sys.argv[1] if len(sys.argv) > 1 else "0_7"
+# Optional 2nd arg = domain (defaults to Empty for back-compat); e.g. MiniGrid_SimpleCrossing_S11N2_v0.
+DOMAIN = sys.argv[2] if len(sys.argv) > 2 else "MiniGrid_Empty_16x16_v0"
 N_CANDIDATES = 10
 RANDOM_RANK = (N_CANDIDATES + 1) / 2.0   # 5.5 = expected rank under random ranking
 
@@ -39,7 +41,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 # Runs are filed under known/ (known fault rate) or unknown/ (ufr variant, tag ends "_ufr").
 FR_SUBDIR = "unknown" if NOISE_TAG.endswith("_ufr") else "known"
-RESULTS_DIR = os.path.join(REPO_ROOT, "experimental results", "MiniGrid_Empty_16x16_v0",
+RESULTS_DIR = os.path.join(REPO_ROOT, "experimental results", DOMAIN,
                            FR_SUBDIR, f"minigrid_bench_noise{NOISE_TAG}")
 PLOTS_DIR = os.path.join(RESULTS_DIR, "plots")
 
@@ -123,7 +125,9 @@ def main():
     df = load()
     os.makedirs(PLOTS_DIR, exist_ok=True)
     noise = df["minigrid_noise"].iloc[0]
-    suffix = f"MiniGrid Empty-16x16, noise {noise} (N={len(df)}, {N_CANDIDATES} candidates)"
+    _pretty = {"MiniGrid_Empty_16x16_v0": "MiniGrid Empty-16x16",
+               "MiniGrid_SimpleCrossing_S11N2_v0": "MiniGrid SimpleCrossing-S11N2"}.get(DOMAIN, DOMAIN)
+    suffix = f"{_pretty}, noise {noise} (N={len(df)}, {N_CANDIDATES} candidates)"
     tag = f"minigrid_noise{NOISE_TAG}"
     created = []
 

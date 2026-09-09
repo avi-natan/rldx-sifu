@@ -25,12 +25,15 @@ FR_COL = "real_fault_prob"
 VIS_COL = "percent_visible_states"
 N_CAND = 10
 RANDOM_RANK = (N_CAND + 1) / 2.0
-NOISES = ["0_3", "0_5", "0_7"]                          # hard -> easy
+# Optional args: 1=comma-separated noise tags (hard->easy), 2=domain. Defaults reproduce the
+# original Empty 3-noise comparison; SimpleCrossing has only 0_5/0_7 trained.
+NOISES = sys.argv[1].split(",") if len(sys.argv) > 1 else ["0_3", "0_5", "0_7"]
+DOMAIN = sys.argv[2] if len(sys.argv) > 2 else "MiniGrid_Empty_16x16_v0"
 COLORS = {"0_3": "#d62728", "0_5": "#ff7f0e", "0_7": "#1f77b4"}
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# The three known-fr runs and this comparison live under the known/ subfolder.
-DDIR = os.path.join(REPO, "experimental results", "MiniGrid_Empty_16x16_v0", "known")
+# The known-fr runs and this comparison live under the known/ subfolder.
+DDIR = os.path.join(REPO, "experimental results", DOMAIN, "known")
 OUT = os.path.join(DDIR, "noise_comparison", "plots")
 
 
@@ -66,7 +69,9 @@ def main():
     dfs = {t: load(t) for t in NOISES}
     os.makedirs(OUT, exist_ok=True)
     ns = {t: len(dfs[t]) for t in NOISES}
-    suffix = f"MiniGrid Empty-16x16 (N per noise: {ns}, {N_CAND} candidates)"
+    _pretty = {"MiniGrid_Empty_16x16_v0": "MiniGrid Empty-16x16",
+               "MiniGrid_SimpleCrossing_S11N2_v0": "MiniGrid SimpleCrossing-S11N2"}.get(DOMAIN, DOMAIN)
+    suffix = f"{_pretty} (N per noise: {ns}, {N_CAND} candidates)"
     created = [
         cmp_plot(dfs, VIS_COL, "Visibility (% observed states)",
                  f"MiniGrid PO: rank vs visibility, by env noise\n{suffix}",
