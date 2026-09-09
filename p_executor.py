@@ -76,6 +76,14 @@ def execute(domain_name,
 
     env.close()
 
+    # The loop exits either because the episode ENDED naturally (done) or because we hit the
+    # max_exec_len CAP and CUT the trajectory. The cut must never be silent -- flag it for ANY domain.
+    if not done:
+        fired = len(faulty_actions_indices) > 0
+        print(f"[TRUNCATED] {domain_name} fault={execution_fault_mode_name} seed={instance_seed}: "
+              f"hit max_exec_len={max_exec_len} without terminating (done=False), faults_fired={fired}. "
+              f"{'expected for a goal-blocking fault' if fired else 'NO fault fired -- policy did not finish under the cap, INVESTIGATE'}.",
+              flush=True)
 
     return trajectory, faulty_actions_indices
 
