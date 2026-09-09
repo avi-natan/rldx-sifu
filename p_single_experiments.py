@@ -1670,10 +1670,11 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
     ml_model_name = "PPO"
     render_mode = "rgb_array"
     # Max trajectory length, per domain (keep < MAX_STATES=200). Empty 16x16: 80 is plenty.
-    # SimpleCrossing 11x11: DEFERRED knob #8 -- MEASURE real avg length once the policy exists and
-    # tune this (and the 60-step floor in single_experiment_prepare_inputs, which may DROP the shorter
-    # goal-terminating Crossing episodes). 80 is a provisional placeholder until then.
-    max_exec_len = {"MiniGrid_SimpleCrossing_S11N2_v0": 80}.get(domain_name, 80)
+    # SimpleCrossing 11x11 (#8, MEASURED with the trained policies at fault_rate 0.5): a fault often
+    # blocks the goal so the agent wanders to the cap -> faulted trajectories are LONG (median ~163
+    # states @noise0.5, ~90 @noise0.7). 80 truncated most of them; 120 keeps rich trajectories while
+    # staying safely < MAX_STATES=200. Pair with the lowered 30-step floor in prepare_inputs.
+    max_exec_len = {"MiniGrid_SimpleCrossing_S11N2_v0": 120}.get(domain_name, 80)
     debug_print = False
 
     # Flat work-unit list (fault_index, seed_index, visibility). Fixed 26 faults x num_seeds

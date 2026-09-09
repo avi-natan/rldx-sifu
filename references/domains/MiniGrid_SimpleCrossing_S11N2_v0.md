@@ -60,12 +60,12 @@
 ## 5. Diagnosis settings (the standardized knobs)
 - **epsilon** 0.04, **fault_rate** 0.5 (single value for now), **visibilities** 20/40/60/80/100,
   **num_seeds** 3 — all reused from Empty.
-- **⚠️ Trajectory-length knobs — DEFERRED (#8), MUST resolve before a real run:** the driver's
-  `max_exec_len` (currently the Empty placeholder 80) AND the 60-step trajectory floor
-  (`MIN_TRAJECTORY_LEN` in `single_experiment_prepare_inputs_non_determinstic`). Crossing is an
-  11×11 room whose episodes TERMINATE at the goal (optimal ~16 steps), so many trajectories may be
-  SHORTER than the 60-step floor and get dropped. **First task once the policy lands:** measure the
-  real avg trajectory length under each noise, then set both knobs (and make the floor domain-aware).
+- **Trajectory-length knobs (#8) — RESOLVED (measured with the trained policies, fault_rate 0.5):**
+  a fault often blocks the goal so the agent wanders to the cap, making faulted trajectories LONG
+  (median ~163 states @noise0.5, ~90 @noise0.7). Set `max_exec_len = 120` for Crossing (rich
+  trajectories, safely < MAX_STATES=200; the old 80 truncated most). The 60-step floor dropped ~29%
+  of noise-0.7 instances (those where the agent still reached the goal quickly), so
+  `MIN_TRAJECTORY_LEN` is lowered to **30** for Crossing (domain-aware in `single_experiment_prepare_inputs_non_determinstic`).
 
 ## 6. Fault space & candidate-set construction
 - **Reuses Empty's** exactly (decision #10, "lazy" but clean; diversity already comes from the seeds):
@@ -111,7 +111,14 @@ Driver: `multiple_experiment_MiniGrid_fault_benchmark(..., domain_name="MiniGrid
   with `xlsx/` + `logs/` + `plots/`. Plot scripts point at the domain via their `RESULTS_DIR`.
 
 ## 11. Results so far
-- **TBD** — no benchmark run yet (gated on the policy). Fill in avg real-fault rank per noise once run.
+- **Policy (generalization gate — PASSED).** From a 30-run overnight sweep, best held-out policies
+  (success on 200 unseen layouts): **noise 0.5 → `long40`** (40M steps): success **1.000**, avg_return
+  0.874, avg_steps 67.8; **noise 0.7 → `hi_lr`** (lr 5e-4, ent 0.02, net 128): success **1.000**,
+  avg_return 0.929, avg_steps 38.2. Both promoted to `models/PPO/..._noise{0.5,0.7}.zip`. Full
+  diagnosis pipeline validated end-to-end (per-layout tabulation; trajectory + diagnoser share one
+  layout; ranks produced; no drops).
+- **Benchmark:** not run yet — ready to launch (`MG_DOMAIN=crossing sbatch sb_minigrid.sbatch`).
+  Fill in avg real-fault rank per noise once run.
 
 ## 12. Gotchas / caveats
 - **Policy must GENERALIZE** across layouts — a policy that memorized one layout will misnavigate

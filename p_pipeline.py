@@ -133,7 +133,10 @@ def single_experiment_prepare_inputs_non_determinstic(domain_name,
     # Minimum trajectory length is domain-aware: Taxi episodes terminate on
     # successful delivery (~13-30 steps), so the FrozenLake-tuned 60 rejects most
     # valid Taxi runs. Use a smaller floor for Taxi (still long enough for gaps).
-    MIN_TRAJECTORY_LEN = {"Taxi_v4": 25}.get(domain_name, 60)
+    # SimpleCrossing (#8, measured): faulted trajectories that reach the goal can be short (~30 states
+    # @noise0.7); the FrozenLake-tuned 60 dropped ~29% of noise-0.7 instances. 30 keeps them (a valid,
+    # if hard, PO instance) without biasing the benchmark toward only the goal-blocking faults.
+    MIN_TRAJECTORY_LEN = {"Taxi_v4": 25, "MiniGrid_SimpleCrossing_S11N2_v0": 30}.get(domain_name, 60)
 
     trajectory_execution = []
     faulty_actions_indices = []
