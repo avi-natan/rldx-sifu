@@ -1664,8 +1664,19 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
     from h_wrappers import MINIGRID_ACTION_PROB
     records = []
     skipped = 0
-    fault_rate_candidates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0] if unknown_fault_rate else None
+    # ufr rate grid is configurable via env MG_RATE_GRID (default 'full' = the 10-rate grid, unchanged).
+    # 'coarse' (4 rates) / 'five' cut ~2-2.5x the Monte-Carlo at ~0 rank cost -- see
+    # references/UFR_SPEEDUP_FINDINGS.md. Only affects the unknown-fault-rate variant.
+    _RATE_GRIDS = {
+        "full":   [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+        "coarse": [0.2, 0.4, 0.6, 0.8],
+        "five":   [0.1, 0.3, 0.5, 0.7, 0.9],
+    }
+    _grid_name = _os.environ.get("MG_RATE_GRID", "full")
+    fault_rate_candidates = _RATE_GRIDS[_grid_name] if unknown_fault_rate else None
     fr_token = "unknown_fr" if unknown_fault_rate else "known_fr"
+    if unknown_fault_rate:
+        print(f"[ufr] rate grid = {_grid_name} -> {fault_rate_candidates}")
 
     ml_model_name = "PPO"
     render_mode = "rgb_array"
