@@ -46,16 +46,21 @@ if [ "${MG_UFR:-0}" = "1" ]; then UFR_FLAG="-ufr"; UFR_TAG="_ufr"; FR_SUBDIR="un
 # ufr rate-grid variant (MG_RATE_GRID: full|coarse|five) lands in its own folder so it never
 # clobbers the full-grid run. 'full' (default) keeps the original path.
 GRID_TAG=""; if [ -n "${MG_RATE_GRID:-}" ] && [ "${MG_RATE_GRID}" != "full" ]; then GRID_TAG="_${MG_RATE_GRID}"; fi
+# diagnosis method: 'full' (default) or 'racing' (confidence-bounded racing). Racing implies ufr and
+# lands in a *_racing folder so it never clobbers the full-ufr run.
+MG_METHOD=${MG_METHOD:-full}
+METHOD_TAG=""; if [ "${MG_METHOD}" = "racing" ]; then METHOD_TAG="_racing"; UFR_TAG="_ufr"; FR_SUBDIR="unknown"; fi
 
 mkdir -p experiment_logs/minigrid_PO
 
 python main.py \
     --minigrid \
     --mg_domain ${MG_DOMAIN} \
+    --mg_method ${MG_METHOD} \
     --mg_group ${SLURM_ARRAY_TASK_ID} \
     --mg_num_groups 390 \
     --mg_noise ${MG_NOISE} \
     --mg_fault_rate ${MG_FR} \
     ${UFR_FLAG} \
     --epsilon 0.04 \
-    -o ${FR_SUBDIR}/minigrid_bench_noise${NOISE_TAG}${UFR_TAG}${GRID_TAG}
+    -o ${FR_SUBDIR}/minigrid_bench_noise${NOISE_TAG}${UFR_TAG}${GRID_TAG}${METHOD_TAG}
