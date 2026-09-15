@@ -51,6 +51,9 @@ GRID_TAG=""; if [ -n "${MG_RATE_GRID:-}" ] && [ "${MG_RATE_GRID}" != "full" ]; t
 MG_METHOD=${MG_METHOD:-full}
 # any non-full ufr diagnoser (racing|v1|v1_freeze) implies ufr and lands in its own *_<method> folder
 METHOD_TAG=""; if [ "${MG_METHOD}" != "full" ]; then METHOD_TAG="_${MG_METHOD}"; UFR_TAG="_ufr"; FR_SUBDIR="unknown"; fi
+# optional free-form output suffix (e.g. a budget sweep tag "_r40") so variants of the SAME method
+# land in their own folders instead of clobbering each other.
+OUT_SUFFIX="${MG_OUT_SUFFIX:-}"
 
 mkdir -p experiment_logs/minigrid_PO
 
@@ -64,4 +67,4 @@ python main.py \
     --mg_fault_rate ${MG_FR} \
     ${UFR_FLAG} \
     --epsilon 0.04 \
-    -o ${FR_SUBDIR}/minigrid_bench_noise${NOISE_TAG}${UFR_TAG}${GRID_TAG}${METHOD_TAG}
+    -o ${FR_SUBDIR}/minigrid_bench_noise${NOISE_TAG}${UFR_TAG}${GRID_TAG}${METHOD_TAG}${OUT_SUFFIX}
