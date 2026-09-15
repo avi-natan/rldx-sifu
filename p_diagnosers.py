@@ -966,6 +966,25 @@ def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
     # per-(pair,gap) sample cap: once a gap is this well estimated, stop pouring budget into it
     # (mirrors full-ufr's per-estimate max_tries). Tunable via MG_V1_CAP.
     max_tries_cap = int(_os.environ.get("MG_V1_CAP", 1200))
+    # PER-ESTIMATE epsilon adaptive stop (same rule as full-ufr's adaptive Monte-Carlo): an
+    # individual (pair, gap) estimate is "settled" -- and gets no more traces -- once its margin
+    # 1.96*sqrt(p(1-p)/n) < eps_stop, provided it has at least min_tries samples. This is what full
+    # does for EVERY estimate; v1 applies it only to the gaps it chooses to refine (contended pairs),
+    # so easy gaps stop cheaply. eps_stop defaults to the run's epsilon; min_tries mirrors full's 100.
+    eps_stop = float(_os.environ.get("MG_V1_EPS", epsilon))
+    min_tries = int(_os.environ.get("MG_V1_MIN", 100))
+
+    def gap_settled(a):
+        """True if this (pair,gap) estimate needs no more traces: at the hard cap, or already
+        pinned to within eps_stop (past min_tries) -- the per-estimate epsilon adaptive stop."""
+        n = a["n"]
+        if n >= max_tries_cap:
+            return True
+        if n >= min_tries:
+            ph = a["hits"] / n
+            if 1.96 * math.sqrt(ph * (1.0 - ph) / n) < eps_stop:
+                return True
+        return False
 
     diagnosis_seed = instance_seed + SIMULATION_OFFSET
     policy = load_trained_model(domain_name, ml_model_name)
@@ -1086,7 +1105,7 @@ def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
                 widest_gidx, widest_w = None, -1.0
                 for g in gaps:
                     a = acc[(f, r, g["idx"])]; n = a["n"]
-                    if n >= max_tries_cap:
+                    if gap_settled(a):        # per-estimate epsilon stop: this gap needs no more
                         continue
                     ph = a["hits"] / n if n else 1e-12
                     margin = 1.96 * math.sqrt(ph * (1.0 - ph) / n) if n else 1.0
@@ -1097,7 +1116,9 @@ def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
                 if widest_gidx is not None:
                     sample(f, r, widest_gidx, round_batch); did_sample = True
         if not did_sample:
-            stop_reason = "budget"; break
+            # every contended gap is settled (margin < eps_stop or at cap) yet the fault order still
+            # overlaps -> a genuine near-tie no amount of extra sampling would break. Not budget.
+            stop_reason = "settled"; break
         num_rounds += 1
 
     # ----- 2. build the standard output (same schema as the other ufr diagnosers) -----
@@ -1129,6 +1150,8 @@ def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
         "v1_stop_reason": stop_reason,
         "v1_frozen_rate_pairs": len(frozen),
         "v1_use_freeze": use_freeze,
+        "v1_eps_stop": eps_stop,
+        "v1_min_tries": min_tries,
         "adaptive_total_calls": len(acc),
         "adaptive_avg_real_tries": total_traces / len(acc) if acc else 0,
     }

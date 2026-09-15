@@ -21,7 +21,8 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 MG_METHOD=${MG_METHOD:-racing}
-RF="taxi_${MG_METHOD}_eps004"
+# optional free-form suffix (e.g. "_eps") so a variant of the same method lands in its own folder
+RF="taxi_${MG_METHOD}_eps004${MG_OUT_SUFFIX:-}"
 mkdir -p ufr_experiments/Taxi_v4/${RF}/logs
 
 python main.py --mg_method ${MG_METHOD} --epsilon 0.04 \
