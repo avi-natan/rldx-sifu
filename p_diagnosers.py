@@ -694,10 +694,11 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
         fault_rate_candidates,
         epsilon,
         confidence=0.95,
-        init_batch=30,
-        round_batch=30,
-        max_tries_cap=600,
-        max_rounds=40,
+        init_batch=40,
+        round_batch=40,
+        max_tries_cap=2000,
+        max_rounds=150,
+        tie_margin=1.0,
         ):
     """UNKNOWN-fault-rate diagnosis by CONFIDENCE-BOUNDED RACING (keeps all candidates; never drops
     a priori). Same inputs/outputs as fault_identification_non_deterministic_PO_unknown_fault_rate,
@@ -815,21 +816,40 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
             for g in gaps:
                 sample(f, r, g["idx"], init_batch)
 
+    # A fault is HOPELESS if, at every rate, it never reproduces a single observed transition
+    # (0 hits across all gaps) -> its likelihood sits at the floor and it can't be told apart from
+    # any other hopeless fault. Two hopeless faults are a genuine tie: their mutual order is
+    # meaningless and must NOT block the confidence-stop (otherwise the useless bottom of the ranking
+    # keeps the whole instance sampling forever).
+    def hopeless(f):
+        return all(all(sum(H[(f, r, g["idx"])]) == 0 for g in gaps) for r in rates)
+
     # ----- 2. racing rounds: decide ADJACENT comparisons in the current order via the paired diff CI.
-    # The full order is settled once every adjacent gap is decided. Refine only the undecided adjacent
-    # pairs, on the gap contributing the most variance, sampling BOTH faults (keeps the CRN pairing).
+    # Refine only the undecided adjacent pairs, on the gap contributing the most variance, sampling
+    # BOTH faults (keeps the CRN pairing). A pair is auto-resolved when both faults are hopeless.
     num_rounds = 0
     stop_reason = "decided"
     while True:
         order = sorted(faults, key=lambda f: L_point(f, best_rate(f)), reverse=True)
         brate = {f: best_rate(f) for f in order}
+        hop = {f: hopeless(f) for f in faults}
 
         undecided = []
         for k in range(len(order) - 1):
             A, B = order[k], order[k + 1]
+            # both hopeless -> genuine tie at the bottom, resolved (don't waste budget).
+            # A above and B hopeless (A not) -> A clearly wins, resolved.
+            if hop[A] and hop[B]:
+                continue
+            if hop[B] and not hop[A]:
+                continue
             D, half = diff_decision(A, brate[A], B, brate[B])
-            if not (D - half > 0):     # A not PROVEN strictly above its lower neighbour B
-                undecided.append((A, brate[A], B, brate[B]))
+            # A pair is RESOLVED when either: A is proven strictly above B (D - half > 0), OR the
+            # difference is pinned to within tie_margin (half < tie_margin) -> we are CONFIDENT it is a
+            # (near-)tie, so more sampling is pointless. Otherwise it is genuinely uncertain -> refine.
+            if (D - half > 0) or (half < tie_margin):
+                continue
+            undecided.append((A, brate[A], B, brate[B]))
 
         if not undecided:
             stop_reason = "decided"; break
