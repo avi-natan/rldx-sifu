@@ -303,12 +303,24 @@ if __name__ == '__main__':
                 )
         else:
             # Known-rate: default. Unknown-rate: pass -ufr on the CLI (10x more MC sims, ~10x slower).
+            TAXI_SEEDS = 100
+            TAXI_TOTAL_UNITS = TAXI_SEEDS * 5   # seeds x 5 visibilities (single fault rate)
+            taxi_unit_start, taxi_unit_end = 0, None
+            if args.mg_group is not None:   # reuse the array-split flags for parallelism
+                gsize = TAXI_TOTAL_UNITS // args.mg_num_groups
+                taxi_unit_start = args.mg_group * gsize
+                taxi_unit_end = (taxi_unit_start + gsize
+                                 if args.mg_group < args.mg_num_groups - 1 else TAXI_TOTAL_UNITS)
+                print(f"Taxi group {args.mg_group}/{args.mg_num_groups} -> units "
+                      f"[{taxi_unit_start}, {taxi_unit_end}) of {TAXI_TOTAL_UNITS}")
             multiple_experiment_Taxi_v4_hard_class2_PO(
                 epsilon=args.epsilon,
-                num_seeds=100,
+                num_seeds=TAXI_SEEDS,
                 run_folder=args.run_folder,
                 unknown_fault_rate=args.unknown_fault_rate,
                 use_racing=args.racing,
+                unit_start=taxi_unit_start,
+                unit_end=taxi_unit_end,
             )
 
 

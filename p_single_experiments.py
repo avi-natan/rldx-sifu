@@ -1302,7 +1302,8 @@ def multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_
 
 
 def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_folder=None,
-                                               unknown_fault_rate=False, use_racing=False):
+                                               unknown_fault_rate=False, use_racing=False,
+                                               unit_start=0, unit_end=None):
     """Taxi-v4 HARD class-2 epsilon experiment (the "second experiment").
 
     Mirrors multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO, but the instances come from
@@ -1348,20 +1349,27 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
     bench = build_benchmark(seeds_per_class=num_seeds, classes=(2,), verbose=False)
     instances = [inst for inst in bench if inst[2] == 2][:num_seeds]
 
+    # Flat work-unit list (seed_idx, visibility, fault_rate) so the run can be split across a SLURM
+    # array (like the MiniGrid benchmark). Each task diagnoses only its window -> full parallelism.
+    UNITS = [(si, vis, fr) for si in range(len(instances))
+             for vis in percent_visible_states_list for fr in fault_rate_list]
+    total_units = len(UNITS)
+    if unit_end is None:
+        unit_end = total_units
+    unit_start = max(0, unit_start); unit_end = min(unit_end, total_units)
+    my_units = UNITS[unit_start:unit_end]
+
     print(f"Running Taxi-v4 PO diagnosis (HARD class-2, {fr_token}) | epsilon={epsilon} | "
           f"num_seeds={len(instances)} | injected_fault_rate={fault_rate_list} | "
-          f"fault_rate_candidates={fault_rate_candidates} | "
-          f"visibility={percent_visible_states_list}\n\n")
+          f"fault_rate_candidates={fault_rate_candidates} | visibility={percent_visible_states_list} | "
+          f"units={total_units} window=[{unit_start},{unit_end}) ({len(my_units)})\n\n")
 
-    for i, (main_seed, base, _cid, a_star, execution_fault_mode_name, candidate_fault_modes) in enumerate(instances):
-        now = datetime.now()
-        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
-        print(f'================= {dt_string}: SEED {main_seed} ({i+1}/{len(instances)}), '
-              f'a*={a_star} fault={execution_fault_mode_name} START =================')
-
-        for percent_visible_states in percent_visible_states_list:
-            for fault_rate in fault_rate_list:
-                print(f'===== SEED {main_seed} | FR={fault_rate} | VR={percent_visible_states} =====')
+    for (si, percent_visible_states, fault_rate) in my_units:
+        (main_seed, base, _cid, a_star, execution_fault_mode_name, candidate_fault_modes) = instances[si]
+        i = si
+        if True:
+            if True:
+                print(f'===== SEED {main_seed} (idx {si}) | FR={fault_rate} | VR={percent_visible_states} =====')
 
                 output = run_NON_DETERMINSTIC_single_experiment_PO(
                     domain_name=domain_name,
@@ -1411,10 +1419,12 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
           f"({avg_diagnosis_time_sec:.2f} sec)")
 
     file_suffix = str(epsilon).replace(".", "_")
-    file_path = f"taxi_v4_hard_class2_PO_{fr_token}_epsilon_{file_suffix}_SEEDS_{num_seeds}"
+    file_path = (f"taxi_v4_hard_class2_PO_{fr_token}_epsilon_{file_suffix}_SEEDS_{num_seeds}"
+                 f"_UNITS_{unit_start}-{unit_end}")
 
     _results_root = "ufr_experiments" if use_racing else "experimental results"
-    output_dir = domain_results_dir(domain_name, run_folder, results_root=_results_root)
+    output_dir = _os.path.join(domain_results_dir(domain_name, run_folder, results_root=_results_root), "xlsx")
+    _os.makedirs(output_dir, exist_ok=True)
     exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)
     print(f"file was written at: {output_dir}/{file_path}.xlsx")
 
