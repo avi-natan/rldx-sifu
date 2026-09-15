@@ -958,6 +958,12 @@ def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
     confident), stop when all adjacent orders are separated (lo[A] > hi[B]) or the budget runs out.
     FREEZE additionally drops, inside each fault, any rate whose interval high-end is below another
     live rate's low-end (it can never be that fault's best rate)."""
+    # budget tunable at launch (no code edit): MG_V1_INIT / MG_V1_ROUND / MG_V1_ROUNDS
+    import os as _os
+    init_batch = int(_os.environ.get("MG_V1_INIT", init_batch))
+    round_batch = int(_os.environ.get("MG_V1_ROUND", round_batch))
+    max_rounds = int(_os.environ.get("MG_V1_ROUNDS", max_rounds))
+
     diagnosis_seed = instance_seed + SIMULATION_OFFSET
     policy = load_trained_model(domain_name, ml_model_name)
     simulator = make_wrapped_env(domain_name, render_mode)
