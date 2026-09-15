@@ -3,6 +3,7 @@ import math
 import time
 import random
 
+import numpy as np
 import gym
 
 from h_consts import DETERMINISTIC, SEED_BLOCK, SIMULATION_OFFSET, MAX_STATES
@@ -751,59 +752,62 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
         last_observed_index = i
     G = len(gaps)
 
-    # ----- per (fault, rate, gap) accumulators: hits, tries -----
-    acc = {(f, r, g["idx"]): {"hits": 0, "tries": 0} for f in faults for r in rates for g in gaps}
-    frozen_rate = set()   # (f, r) proven not to be fault f's best rate
-
-    delta = 1.0 - confidence
-    _hoeff_c = math.log(2.0 / delta)   # Hoeffding: half-width = sqrt(_hoeff_c / (2n))
+    # ----- per (fault, rate, gap): the HIT VECTOR (0/1 per trace), aligned by trace index so that a
+    # given index uses the SAME random seed across every fault/rate (Common Random Numbers). Storing
+    # the vectors (not just a count) lets us measure the CORRELATION between two faults, hence the
+    # variance of their DIFFERENCE -- the key to deciding comparisons cheaply. -----
+    H = {(f, r, g["idx"]): [] for f in faults for r in rates for g in gaps}
+    frozen_rate = set()   # (unused in v2; kept for output-schema compatibility)
+    z = 1.96 if confidence <= 0.95 else 2.576   # per-comparison normal quantile
 
     def sample(f, r, gidx, n):
         """Run n MORE traces for (f,r,gap), continuing the seed sequence (CRN-aligned by index)."""
-        a = acc[(f, r, gidx)]
+        a = H[(f, r, gidx)]
         g = gaps[gidx]
         fm = candidate_fault_modes[f]
         base = g["seed"]; start = g["start"]; end = g["end"]; length = g["length"]
         rng = random.Random()
-        hits = 0
-        for i in range(a["tries"], a["tries"] + n):
+        for i in range(len(a), len(a) + n):
             s = base + i * MAX_STATES
             rng.seed(s)
             nxt = execute_one_trace(start, length, fm, r, domain_name, s, rng,
                                     simulator, policy, False)
-            if comparator(nxt, end):
-                hits += 1
-        a["hits"] += hits
-        a["tries"] += n
+            a.append(1 if comparator(nxt, end) else 0)
 
-    def p_ci(f, r, gidx):
-        a = acc[(f, r, gidx)]; n = a["tries"]
-        if n == 0:
-            return 1e-12, 1.0
-        ph = a["hits"] / n
-        h = math.sqrt(_hoeff_c / (2.0 * n))
-        return max(ph - h, 1e-12), min(ph + h, 1.0)
+    _EPS = 1e-6
 
-    def L_ci(f, r):
-        lo = hi = 0.0
-        for g in gaps:
-            plo, phi = p_ci(f, r, g["idx"])
-            lo += math.log(plo); hi += math.log(phi)
-        return lo, hi
+    def phat(f, r, gidx):
+        a = H[(f, r, gidx)]
+        return (sum(a) / len(a)) if a else _EPS
 
     def L_point(f, r):
-        s = 0.0
-        for g in gaps:
-            a = acc[(f, r, g["idx"])]
-            ph = a["hits"] / a["tries"] if a["tries"] else 1e-12
-            s += math.log(max(ph, 1e-12))
-        return s
+        return sum(math.log(max(phat(f, r, g["idx"]), 1e-12)) for g in gaps)
 
-    def score_ci(f):
-        los = []; his = []
-        for r in rates:
-            lo, hi = L_ci(f, r); los.append(lo); his.append(hi)
-        return max(los), max(his)   # conservative: best rate's lower / any rate's upper
+    def best_rate(f):
+        return max(rates, key=lambda r: L_point(f, r))
+
+    def diff_decision(A, rA, B, rB):
+        """Decide the sign of D = L(A,rA) - L(B,rB) = sum_g (log pA_g - log pB_g), using the CRN
+        PAIRED variance (delta method): per gap, over the common trace prefix (same seeds),
+          var_g = (1-a)/(a n) + (1-b)/(b n) - 2(pab - a b)/(a b n),
+        where a,b are the two hit-rates and pab the co-hit rate. The -2*cov term is what shrinks the
+        difference's variance far below the two marginals. Returns (D_hat, half_width)."""
+        D = 0.0; var = 0.0
+        for g in gaps:
+            gi = g["idx"]
+            Xa = H[(A, rA, gi)]; Yb = H[(B, rB, gi)]
+            n = min(len(Xa), len(Yb))
+            if n == 0:
+                return 0.0, float("inf")
+            xa = np.frombuffer(bytes(Xa[:n]), dtype=np.uint8)
+            yb = np.frombuffer(bytes(Yb[:n]), dtype=np.uint8)
+            a = min(max(xa.mean(), _EPS), 1.0 - 1e-9)
+            b = min(max(yb.mean(), _EPS), 1.0 - 1e-9)
+            pab = float(np.dot(xa, yb)) / n
+            D += math.log(a) - math.log(b)
+            var += (1 - a) / (a * n) + (1 - b) / (b * n) - 2.0 * (pab - a * b) / (a * b * n)
+        var = max(var, 0.0)
+        return D, z * math.sqrt(var)
 
     # ----- 1. seed every (pair, gap) with a small batch -----
     for f in faults:
@@ -811,54 +815,46 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
             for g in gaps:
                 sample(f, r, g["idx"], init_batch)
 
-    # ----- 2. racing rounds -----
+    # ----- 2. racing rounds: decide ADJACENT comparisons in the current order via the paired diff CI.
+    # The full order is settled once every adjacent gap is decided. Refine only the undecided adjacent
+    # pairs, on the gap contributing the most variance, sampling BOTH faults (keeps the CRN pairing).
     num_rounds = 0
     stop_reason = "decided"
     while True:
-        # (a) rate elimination: freeze a rate whose UPPER bound is below the best rate's LOWER bound
-        for f in faults:
-            alive = [r for r in rates if (f, r) not in frozen_rate]
-            if len(alive) <= 1:
-                continue
-            lcis = {r: L_ci(f, r) for r in alive}
-            best_lo = max(lcis[r][0] for r in alive)
-            for r in alive:
-                if lcis[r][1] < best_lo:
-                    frozen_rate.add((f, r))
+        order = sorted(faults, key=lambda f: L_point(f, best_rate(f)), reverse=True)
+        brate = {f: best_rate(f) for f in order}
 
-        # (b) contended fault comparisons: score CIs that overlap
-        sc = {f: score_ci(f) for f in faults}
-        contended = set()
-        for a_i in range(len(faults)):
-            for b_i in range(a_i + 1, len(faults)):
-                fa, fb = faults[a_i], faults[b_i]
-                if not (sc[fa][0] > sc[fb][1] or sc[fb][0] > sc[fa][1]):
-                    contended.add(fa); contended.add(fb)
+        undecided = []
+        for k in range(len(order) - 1):
+            A, B = order[k], order[k + 1]
+            D, half = diff_decision(A, brate[A], B, brate[B])
+            if not (D - half > 0):     # A not PROVEN strictly above its lower neighbour B
+                undecided.append((A, brate[A], B, brate[B]))
 
-        if not contended:
+        if not undecided:
             stop_reason = "decided"; break
         if num_rounds >= max_rounds:
             stop_reason = "max_rounds"; break
 
-        # (c) allocate SURGICALLY: for each contended fault and each of its ALIVE rates, refine only
-        # the single gap whose p-CI is WIDEST (the estimate whose tightening most shrinks that rate's
-        # L band, hence the fault's score band). Concentrates budget instead of re-sampling every gap.
         did_sample = False
-        for f in contended:
-            for r in rates:
-                if (f, r) in frozen_rate:
+        for (A, rA, B, rB) in undecided:
+            # gap with the largest (marginal) variance contribution that isn't at the cap
+            best_g, best_v = None, -1.0
+            for g in gaps:
+                gi = g["idx"]
+                nmin = min(len(H[(A, rA, gi)]), len(H[(B, rB, gi)]))
+                if nmin >= max_tries_cap:
                     continue
-                widest_gidx, widest_w = None, -1.0
-                for g in gaps:
-                    plo, phi = p_ci(f, r, g["idx"])
-                    if acc[(f, r, g["idx"])]["tries"] >= max_tries_cap:
-                        continue
-                    w = phi - plo
-                    if w > widest_w:
-                        widest_w, widest_gidx = w, g["idx"]
-                if widest_gidx is not None:
-                    sample(f, r, widest_gidx, round_batch)
-                    did_sample = True
+                nn = max(nmin, 1)
+                a = min(max(phat(A, rA, gi), _EPS), 1.0 - 1e-9)
+                b = min(max(phat(B, rB, gi), _EPS), 1.0 - 1e-9)
+                v = (1 - a) / (a * nn) + (1 - b) / (b * nn)
+                if v > best_v:
+                    best_v, best_g = v, gi
+            if best_g is not None:
+                sample(A, rA, best_g, round_batch)
+                sample(B, rB, best_g, round_batch)
+                did_sample = True
         if not did_sample:
             stop_reason = "budget_exhausted"; break
         num_rounds += 1
@@ -876,10 +872,10 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
     T = max(G, 1)
     sorted_faults_geo = [(fault, math.exp(logL / T)) for fault, logL in sorted_faults]
 
-    total_traces = sum(a["tries"] for a in acc.values())
+    total_traces = sum(len(v) for v in H.values())
     # what the FULL method would have sampled if every (pair,gap) ran to the cap (a conservative
     # upper baseline for the speedup, machine-independent):
-    full_baseline_traces = len(acc) * max_tries_cap
+    full_baseline_traces = len(H) * max_tries_cap
 
     extra_output = ""
     for fault, logL in sorted_faults:
@@ -909,8 +905,8 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
     output["racing_stop_reason"] = stop_reason
     output["racing_confidence"] = confidence
     # keep the columns the ufr path also emits, so the xlsx schema lines up
-    output["adaptive_total_calls"] = len(acc)
-    output["adaptive_avg_real_tries"] = total_traces / len(acc) if acc else 0
+    output["adaptive_total_calls"] = len(H)
+    output["adaptive_avg_real_tries"] = total_traces / len(H) if H else 0
 
     print(f"\n===== RACING done: stop={stop_reason} rounds={num_rounds} "
           f"traces={total_traces} (cap-baseline {full_baseline_traces}, "
