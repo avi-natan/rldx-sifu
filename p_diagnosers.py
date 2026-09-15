@@ -696,8 +696,8 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
         confidence=0.95,
         init_batch=40,
         round_batch=40,
-        max_tries_cap=2000,
-        max_rounds=150,
+        max_tries_cap=1200,
+        max_rounds=80,
         tie_margin=1.0,
         ):
     """UNKNOWN-fault-rate diagnosis by CONFIDENCE-BOUNDED RACING (keeps all candidates; never drops
@@ -720,6 +720,14 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
       PROVED; worst case (all near-ties, e.g. Taxi) nothing is frozen and we do full work -> never
       worse than the full method.
     """
+    # Budget is tunable at launch (no code edit) via env vars, so we can sweep the time<->rank dial:
+    #   MG_RACING_INIT / MG_RACING_ROUND / MG_RACING_CAP / MG_RACING_ROUNDS
+    import os as _os
+    init_batch = int(_os.environ.get("MG_RACING_INIT", init_batch))
+    round_batch = int(_os.environ.get("MG_RACING_ROUND", round_batch))
+    max_tries_cap = int(_os.environ.get("MG_RACING_CAP", max_tries_cap))
+    max_rounds = int(_os.environ.get("MG_RACING_ROUNDS", max_rounds))
+
     diagnosis_seed = instance_seed + SIMULATION_OFFSET
     policy = load_trained_model(domain_name, ml_model_name)
     simulator = make_wrapped_env(domain_name, render_mode)
