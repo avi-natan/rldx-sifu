@@ -43,6 +43,9 @@ MG_DOMAIN=${MG_DOMAIN:-empty}      # 'empty' or 'crossing'; results land under t
 NOISE_TAG=$(echo "$MG_NOISE" | tr '.' '_')
 UFR_FLAG=""; UFR_TAG=""; FR_SUBDIR="known"
 if [ "${MG_UFR:-0}" = "1" ]; then UFR_FLAG="-ufr"; UFR_TAG="_ufr"; FR_SUBDIR="unknown"; fi
+# ufr rate-grid variant (MG_RATE_GRID: full|coarse|five) lands in its own folder so it never
+# clobbers the full-grid run. 'full' (default) keeps the original path.
+GRID_TAG=""; if [ -n "${MG_RATE_GRID:-}" ] && [ "${MG_RATE_GRID}" != "full" ]; then GRID_TAG="_${MG_RATE_GRID}"; fi
 
 mkdir -p experiment_logs/minigrid_PO
 
@@ -55,4 +58,4 @@ python main.py \
     --mg_fault_rate ${MG_FR} \
     ${UFR_FLAG} \
     --epsilon 0.04 \
-    -o ${FR_SUBDIR}/minigrid_bench_noise${NOISE_TAG}${UFR_TAG}
+    -o ${FR_SUBDIR}/minigrid_bench_noise${NOISE_TAG}${UFR_TAG}${GRID_TAG}
