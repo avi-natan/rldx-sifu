@@ -943,6 +943,177 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
     return output
 
 
+def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name, observations,
+            candidate_fault_modes, fault_rate_candidates, epsilon,
+            use_freeze, init_batch=40, round_batch=40, max_rounds=80):
+    """v1 unknown-fault-rate diagnoser (MARGINAL confidence intervals; each pair judged on its OWN
+    interval). Two modes share this body:
+      * use_freeze=False -> fault_identification_..._V1        (no rate freezing)
+      * use_freeze=True  -> fault_identification_..._V1_FREEZE (freeze rates that can't be a fault's best)
+
+    Per (candidate_fault_mode, candidate_fault_rate, gap): estimate p_hat by Monte-Carlo, with the
+    normal-approx margin (1.96*sqrt(p(1-p)/n)). Pair score L = sum_gaps log p_hat, with a LOOSE CI
+    [sum log p_lo, sum log p_hi]. Fault score = L at its best rate. Rank faults by the point score;
+    keep simulating only the faults whose adjacent score-intervals still OVERLAP (order not yet
+    confident), stop when all adjacent orders are separated (lo[A] > hi[B]) or the budget runs out.
+    FREEZE additionally drops, inside each fault, any rate whose interval high-end is below another
+    live rate's low-end (it can never be that fault's best rate)."""
+    diagnosis_seed = instance_seed + SIMULATION_OFFSET
+    policy = load_trained_model(domain_name, ml_model_name)
+    simulator = make_wrapped_env(domain_name, render_mode)
+    initial_obs, _ = simulator.reset(seed=instance_seed)
+    assert comparators[domain_name](observations[0], initial_obs)
+    comparator = comparators[domain_name]
+    t0 = time.time()
+
+    faults = list(candidate_fault_modes.keys())
+    rates = list(fault_rate_candidates)
+
+    # gaps: (start observed state, end observed state, hidden length, seed base for this gap)
+    gaps = []
+    last = 0
+    for i in range(1, len(observations)):
+        if observations[i] is None:
+            continue
+        gaps.append({"idx": len(gaps), "start": observations[last], "end": observations[i],
+                     "length": i - last, "seed": diagnosis_seed + last})
+        last = i
+
+    acc = {(f, r, g["idx"]): {"hits": 0, "n": 0} for f in faults for r in rates for g in gaps}
+    frozen = set()   # (f, r) rates proven not to be their fault's best (only used if use_freeze)
+
+    def sample(f, r, gidx, k):
+        a = acc[(f, r, gidx)]; g = gaps[gidx]; fm = candidate_fault_modes[f]
+        base = g["seed"]; rng = random.Random()
+        for i in range(a["n"], a["n"] + k):
+            s = base + i * MAX_STATES
+            rng.seed(s)
+            nxt = execute_one_trace(g["start"], g["length"], fm, r, domain_name, s, rng,
+                                    simulator, policy, False)
+            if comparator(nxt, g["end"]):
+                a["hits"] += 1
+            a["n"] += 1
+
+    def interval_of_pair(f, r):
+        """(L_point, L_lo, L_hi) for a pair -- loose CI: sum of per-gap log endpoints."""
+        Lp = Llo = Lhi = 0.0
+        for g in gaps:
+            a = acc[(f, r, g["idx"])]; n = a["n"]
+            ph = a["hits"] / n if n else 1e-12
+            margin = 1.96 * math.sqrt(ph * (1.0 - ph) / n) if n else 1.0
+            plo = max(ph - margin, 1e-12); phi = min(max(ph + margin, 1e-12), 1.0)
+            Lp += math.log(max(ph, 1e-12)); Llo += math.log(plo); Lhi += math.log(max(phi, 1e-12))
+        return Lp, Llo, Lhi
+
+    def fault_score(f):
+        live = [r for r in rates if (f, r) not in frozen] or rates
+        ivs = {r: interval_of_pair(f, r) for r in live}
+        best_r = max(live, key=lambda r: ivs[r][0])
+        Lp, Llo, Lhi = ivs[best_r]
+        return Lp, Llo, Lhi, best_r
+
+    # ----- 0. initial batch for every (pair, gap) -----
+    for f in faults:
+        for r in rates:
+            for g in gaps:
+                sample(f, r, g["idx"], init_batch)
+
+    # ----- 1. adaptive rounds -----
+    num_rounds = 0
+    stop_reason = "decided"
+    while True:
+        # (a) FREEZE losing rates inside each fault (only in the freeze variant)
+        if use_freeze:
+            for f in faults:
+                live = [r for r in rates if (f, r) not in frozen]
+                if len(live) <= 1:
+                    continue
+                ivs = {r: interval_of_pair(f, r) for r in live}
+                best_low = max(ivs[r][1] for r in live)
+                for r in live:
+                    if ivs[r][2] < best_low:          # high-end below best low-end -> can't win
+                        frozen.add((f, r))
+
+        # (b) score + interval per fault, then order by point score
+        sc = {f: fault_score(f) for f in faults}
+        order = sorted(faults, key=lambda f: sc[f][0], reverse=True)
+
+        # (c) which ADJACENT pairs are not yet confidently ordered? (intervals overlap)
+        undecided = set()
+        for k in range(len(order) - 1):
+            A, B = order[k], order[k + 1]
+            if not (sc[A][1] > sc[B][2]):             # NOT (lo[A] > hi[B]) -> overlap
+                undecided.add(A); undecided.add(B)
+
+        if not undecided:
+            stop_reason = "decided"; break
+        if num_rounds >= max_rounds:
+            stop_reason = "budget"; break
+
+        # (d) spend more only on undecided faults, only on their LIVE (non-frozen) rates
+        for f in undecided:
+            for r in rates:
+                if (f, r) in frozen:
+                    continue
+                for g in gaps:
+                    sample(f, r, g["idx"], round_batch)
+        num_rounds += 1
+
+    # ----- 2. build the standard output (same schema as the other ufr diagnosers) -----
+    log_prob_total_per_fault_and_rate = {f: {r: interval_of_pair(f, r)[0] for r in rates} for f in faults}
+    best_rate_per_fault = {}; best_logL_per_fault = {}
+    for f in faults:
+        br = max(rates, key=lambda r: log_prob_total_per_fault_and_rate[f][r])
+        best_rate_per_fault[f] = br
+        best_logL_per_fault[f] = log_prob_total_per_fault_and_rate[f][br]
+    sorted_faults = sorted(best_logL_per_fault.items(), key=lambda x: x[1], reverse=True)
+    T = max(len(gaps), 1)
+    total_traces = sum(a["n"] for a in acc.values())
+
+    output = {
+        "diagnosis_time_sec": time.time() - t0,
+        "diagnosis_time_ms": (time.time() - t0) * 1000,
+        "avg_gap_time": 0.0,
+        "num_gaps": len(gaps),
+        "sorted_faults": sorted_faults,
+        "sorted_faults_with_exp_val": [(f, math.exp(L / T)) for f, L in sorted_faults],
+        "best_rate_per_fault": best_rate_per_fault,
+        "log_prob_total_per_fault_and_rate": log_prob_total_per_fault_and_rate,
+        "fault_rate_candidates": fault_rate_candidates,
+        "observations": observations,
+        "observations_len": len(observations),
+        "extra_output": "",
+        "v1_total_traces": total_traces,
+        "v1_num_rounds": num_rounds,
+        "v1_stop_reason": stop_reason,
+        "v1_frozen_rate_pairs": len(frozen),
+        "v1_use_freeze": use_freeze,
+        "adaptive_total_calls": len(acc),
+        "adaptive_avg_real_tries": total_traces / len(acc) if acc else 0,
+    }
+    print(f"\n===== V1{'-FREEZE' if use_freeze else ''} done: stop={stop_reason} rounds={num_rounds} "
+          f"traces={total_traces} frozen_rates={len(frozen)}/{len(faults)*len(rates)} =====")
+    return output
+
+
+def fault_identification_non_deterministic_PO_unknown_fault_rate_V1(
+        debug_print, render_mode, instance_seed, ml_model_name, domain_name,
+        observations, candidate_fault_modes, fault_rate_candidates, epsilon):
+    """v1, NO freezing: each fault judged by its own marginal-CI score; simulate undecided faults'
+    ALL rates until adjacent orders separate (or budget). See _v1_run."""
+    return _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name, observations,
+                   candidate_fault_modes, fault_rate_candidates, epsilon, use_freeze=False)
+
+
+def fault_identification_non_deterministic_PO_unknown_fault_rate_V1_FREEZE(
+        debug_print, render_mode, instance_seed, ml_model_name, domain_name,
+        observations, candidate_fault_modes, fault_rate_candidates, epsilon):
+    """v1 WITH freezing: same as V1, but each round also freezes (stops simulating) any rate that
+    provably cannot be its fault's best rate, so budget is spent only on live rates. See _v1_run."""
+    return _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name, observations,
+                   candidate_fault_modes, fault_rate_candidates, epsilon, use_freeze=True)
+
+
 def fault_identification_non_deterministic_PO(
         debug_print, render_mode,
 

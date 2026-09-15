@@ -49,7 +49,8 @@ GRID_TAG=""; if [ -n "${MG_RATE_GRID:-}" ] && [ "${MG_RATE_GRID}" != "full" ]; t
 # diagnosis method: 'full' (default) or 'racing' (confidence-bounded racing). Racing implies ufr and
 # lands in a *_racing folder so it never clobbers the full-ufr run.
 MG_METHOD=${MG_METHOD:-full}
-METHOD_TAG=""; if [ "${MG_METHOD}" = "racing" ]; then METHOD_TAG="_racing"; UFR_TAG="_ufr"; FR_SUBDIR="unknown"; fi
+# any non-full ufr diagnoser (racing|v1|v1_freeze) implies ufr and lands in its own *_<method> folder
+METHOD_TAG=""; if [ "${MG_METHOD}" != "full" ]; then METHOD_TAG="_${MG_METHOD}"; UFR_TAG="_ufr"; FR_SUBDIR="unknown"; fi
 
 mkdir -p experiment_logs/minigrid_PO
 

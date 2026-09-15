@@ -1303,7 +1303,7 @@ def multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_
 
 def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_folder=None,
                                                unknown_fault_rate=False, use_racing=False,
-                                               unit_start=0, unit_end=None):
+                                               unit_start=0, unit_end=None, ufr_variant=None):
     """Taxi-v4 HARD class-2 epsilon experiment (the "second experiment").
 
     Mirrors multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO, but the instances come from
@@ -1335,15 +1335,17 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
     debug_print = False
     num_candidate_fault_modes = 10
 
-    if use_racing:
-        unknown_fault_rate = True   # racing is an unknown-fault-rate diagnoser
+    # unify experimental ufr diagnosers: racing | v1 | v1_freeze (any implies unknown fault rate)
+    _variant = "racing" if use_racing else ufr_variant
+    if _variant is not None:
+        unknown_fault_rate = True
     fault_rate_list = [0.3]                              # FIXED injected rate
     percent_visible_states_list = [20, 40, 60, 80, 100]
     # Rate grid the UNKNOWN-rate diagnoser searches over (unused when the rate is known).
     fault_rate_candidates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0] if unknown_fault_rate else None
     fr_token = "unknown_fr" if unknown_fault_rate else "known_fr"
-    if use_racing:
-        fr_token += "_racing"
+    if _variant is not None:
+        fr_token = "unknown_fr_" + _variant
 
     # Build the first num_seeds CLASS-2 instances (least-used a*, count >= 2).
     bench = build_benchmark(seeds_per_class=num_seeds, classes=(2,), verbose=False)
@@ -1387,7 +1389,8 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
                     unknown_fault_rate=unknown_fault_rate,
                     fault_rate_candidates=fault_rate_candidates,
                     fixed_candidate_fault_modes=candidate_fault_modes,
-                    use_racing=use_racing)
+                    use_racing=(_variant == "racing"),
+                    ufr_variant=(_variant if _variant in ("v1", "v1_freeze") else None))
 
                 if not output:
                     skipped += 1
@@ -1422,7 +1425,7 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
     file_path = (f"taxi_v4_hard_class2_PO_{fr_token}_epsilon_{file_suffix}_SEEDS_{num_seeds}"
                  f"_UNITS_{unit_start}-{unit_end}")
 
-    _results_root = "ufr_experiments" if use_racing else "experimental results"
+    _results_root = "ufr_experiments" if _variant is not None else "experimental results"
     output_dir = _os.path.join(domain_results_dir(domain_name, run_folder, results_root=_results_root), "xlsx")
     _os.makedirs(output_dir, exist_ok=True)
     exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)
@@ -1661,7 +1664,7 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
                                                  fault_rate=0.5, num_seeds=3, run_folder=None,
                                                  unit_start=0, unit_end=None,
                                                  domain_name="MiniGrid_Empty_16x16_v0",
-                                                 use_racing=False):
+                                                 use_racing=False, ufr_variant=None):
     """MiniGrid partial-observability fault-diagnosis benchmark (item 5).
 
     FIXED benchmark: 26 execution faults x num_seeds instances, each carrying a STATIC 10-candidate
@@ -1689,14 +1692,19 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
         "coarse": [0.2, 0.4, 0.6, 0.8],
         "five":   [0.1, 0.3, 0.5, 0.7, 0.9],
     }
+    # unify the experimental ufr diagnosers under one 'variant' name: racing | v1 | v1_freeze.
+    # any of them implies unknown-fault-rate and routes results to ufr_experiments/.
+    _variant = "racing" if use_racing else ufr_variant     # None | racing | v1 | v1_freeze
+    if _variant is not None:
+        unknown_fault_rate = True
     _grid_name = _os.environ.get("MG_RATE_GRID", "full")
     fault_rate_candidates = _RATE_GRIDS[_grid_name] if unknown_fault_rate else None
     fr_token = "unknown_fr" if unknown_fault_rate else "known_fr"
-    if use_racing:
-        fr_token += "_racing"   # distinguish racing-diagnoser results in the filename
+    if _variant is not None:
+        fr_token = "unknown_fr_" + _variant   # e.g. unknown_fr_v1_freeze
     if unknown_fault_rate:
         print(f"[ufr] rate grid = {_grid_name} -> {fault_rate_candidates} | "
-              f"diagnoser = {'RACING' if use_racing else 'full'}")
+              f"diagnoser = {_variant or 'full'}")
 
     ml_model_name = "PPO"
     render_mode = "rgb_array"
@@ -1752,7 +1760,8 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
             unknown_fault_rate=unknown_fault_rate,
             fault_rate_candidates=fault_rate_candidates,
             fixed_candidate_fault_modes=candidate_specs,
-            use_racing=use_racing,
+            use_racing=(_variant == "racing"),
+            ufr_variant=(_variant if _variant in ("v1", "v1_freeze") else None),
         )
         if not output:
             skipped += 1
@@ -1785,7 +1794,7 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
     # Keep per-task xlsx in an xlsx/ subfolder of the run folder, so it sits alongside logs/
     # and plots/ (run_folder/{xlsx,logs,plots}) instead of loose at the top. Exploratory racing runs
     # go under ufr_experiments/ (kept OUT of the main experimental results/ tree until validated).
-    _results_root = "ufr_experiments" if use_racing else "experimental results"
+    _results_root = "ufr_experiments" if _variant is not None else "experimental results"
     output_dir = _os.path.join(domain_results_dir(domain_name, run_folder, results_root=_results_root), "xlsx")
     _os.makedirs(output_dir, exist_ok=True)
     exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)

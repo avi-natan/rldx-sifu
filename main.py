@@ -178,10 +178,11 @@ if __name__ == '__main__':
     parser.add_argument(
         "--mg_method",
         default="full",
-        choices=["full", "racing"],
-        help="unknown-fault-rate diagnoser: 'full' (score every rate to confidence) or 'racing' "
-             "(confidence-bounded racing that keeps all 100 fault x rate pairs but spends budget only "
-             "where the ranking is still undecided). 'racing' implies unknown fault rate."
+        choices=["full", "racing", "v1", "v1_freeze"],
+        help="unknown-fault-rate diagnoser: 'full' (score every rate to confidence), 'racing' "
+             "(paired-difference racing, v2), 'v1' (marginal-CI racing, no freezing), or 'v1_freeze' "
+             "(marginal-CI racing that also freezes rates that can't be a fault's best). Anything but "
+             "'full' implies unknown fault rate and routes results to ufr_experiments/."
     )
 
     parser.add_argument(
@@ -279,28 +280,18 @@ if __name__ == '__main__':
                             if args.mg_group < args.mg_num_groups - 1 else MG_TOTAL_UNITS)
                 print(f"MiniGrid group {args.mg_group}/{args.mg_num_groups} "
                       f"-> work-units [{unit_start}, {unit_end}) of {MG_TOTAL_UNITS}")
-            if args.mg_method == "racing":
-                from p_single_experiments import multiple_experiment_MiniGrid_fault_benchmark_racing
-                multiple_experiment_MiniGrid_fault_benchmark_racing(
-                    epsilon=args.epsilon,
-                    fault_rate=args.mg_fault_rate,
-                    num_seeds=MG_NUM_SEEDS,
-                    run_folder=args.run_folder,
-                    unit_start=unit_start,
-                    unit_end=unit_end,
-                    domain_name=mg_domain_name,
-                )
-            else:
-                multiple_experiment_MiniGrid_fault_benchmark(
-                    epsilon=args.epsilon,
-                    unknown_fault_rate=args.unknown_fault_rate,
-                    fault_rate=args.mg_fault_rate,
-                    num_seeds=MG_NUM_SEEDS,
-                    run_folder=args.run_folder,
-                    unit_start=unit_start,
-                    unit_end=unit_end,
-                    domain_name=mg_domain_name,
-                )
+            _ufr_variant = None if args.mg_method == "full" else args.mg_method
+            multiple_experiment_MiniGrid_fault_benchmark(
+                epsilon=args.epsilon,
+                unknown_fault_rate=args.unknown_fault_rate,
+                fault_rate=args.mg_fault_rate,
+                num_seeds=MG_NUM_SEEDS,
+                run_folder=args.run_folder,
+                unit_start=unit_start,
+                unit_end=unit_end,
+                domain_name=mg_domain_name,
+                ufr_variant=_ufr_variant,
+            )
         else:
             # Known-rate: default. Unknown-rate: pass -ufr on the CLI (10x more MC sims, ~10x slower).
             TAXI_SEEDS = 100
@@ -313,6 +304,7 @@ if __name__ == '__main__':
                                  if args.mg_group < args.mg_num_groups - 1 else TAXI_TOTAL_UNITS)
                 print(f"Taxi group {args.mg_group}/{args.mg_num_groups} -> units "
                       f"[{taxi_unit_start}, {taxi_unit_end}) of {TAXI_TOTAL_UNITS}")
+            _taxi_variant = None if args.mg_method == "full" else args.mg_method
             multiple_experiment_Taxi_v4_hard_class2_PO(
                 epsilon=args.epsilon,
                 num_seeds=TAXI_SEEDS,
@@ -321,6 +313,7 @@ if __name__ == '__main__':
                 use_racing=args.racing,
                 unit_start=taxi_unit_start,
                 unit_end=taxi_unit_end,
+                ufr_variant=_taxi_variant,
             )
 
 
