@@ -175,6 +175,15 @@ if __name__ == '__main__':
              "26-fault benchmark + candidate sets; results land under the domain's own results dir."
     )
 
+    parser.add_argument(
+        "--mg_method",
+        default="full",
+        choices=["full", "racing"],
+        help="unknown-fault-rate diagnoser: 'full' (score every rate to confidence) or 'racing' "
+             "(confidence-bounded racing that keeps all 100 fault x rate pairs but spends budget only "
+             "where the ranking is still undecided). 'racing' implies unknown fault rate."
+    )
+
     args = parser.parse_args()
 
     try:
@@ -263,16 +272,28 @@ if __name__ == '__main__':
                             if args.mg_group < args.mg_num_groups - 1 else MG_TOTAL_UNITS)
                 print(f"MiniGrid group {args.mg_group}/{args.mg_num_groups} "
                       f"-> work-units [{unit_start}, {unit_end}) of {MG_TOTAL_UNITS}")
-            multiple_experiment_MiniGrid_fault_benchmark(
-                epsilon=args.epsilon,
-                unknown_fault_rate=args.unknown_fault_rate,
-                fault_rate=args.mg_fault_rate,
-                num_seeds=MG_NUM_SEEDS,
-                run_folder=args.run_folder,
-                unit_start=unit_start,
-                unit_end=unit_end,
-                domain_name=mg_domain_name,
-            )
+            if args.mg_method == "racing":
+                from p_single_experiments import multiple_experiment_MiniGrid_fault_benchmark_racing
+                multiple_experiment_MiniGrid_fault_benchmark_racing(
+                    epsilon=args.epsilon,
+                    fault_rate=args.mg_fault_rate,
+                    num_seeds=MG_NUM_SEEDS,
+                    run_folder=args.run_folder,
+                    unit_start=unit_start,
+                    unit_end=unit_end,
+                    domain_name=mg_domain_name,
+                )
+            else:
+                multiple_experiment_MiniGrid_fault_benchmark(
+                    epsilon=args.epsilon,
+                    unknown_fault_rate=args.unknown_fault_rate,
+                    fault_rate=args.mg_fault_rate,
+                    num_seeds=MG_NUM_SEEDS,
+                    run_folder=args.run_folder,
+                    unit_start=unit_start,
+                    unit_end=unit_end,
+                    domain_name=mg_domain_name,
+                )
         else:
             # Known-rate: default. Unknown-rate: pass -ufr on the CLI (10x more MC sims, ~10x slower).
             multiple_experiment_Taxi_v4_hard_class2_PO(

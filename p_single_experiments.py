@@ -1644,7 +1644,8 @@ MINIGRID_CANDIDATE_SETS = build_minigrid_candidate_sets()
 def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rate=False,
                                                  fault_rate=0.5, num_seeds=3, run_folder=None,
                                                  unit_start=0, unit_end=None,
-                                                 domain_name="MiniGrid_Empty_16x16_v0"):
+                                                 domain_name="MiniGrid_Empty_16x16_v0",
+                                                 use_racing=False):
     """MiniGrid partial-observability fault-diagnosis benchmark (item 5).
 
     FIXED benchmark: 26 execution faults x num_seeds instances, each carrying a STATIC 10-candidate
@@ -1675,8 +1676,11 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
     _grid_name = _os.environ.get("MG_RATE_GRID", "full")
     fault_rate_candidates = _RATE_GRIDS[_grid_name] if unknown_fault_rate else None
     fr_token = "unknown_fr" if unknown_fault_rate else "known_fr"
+    if use_racing:
+        fr_token += "_racing"   # distinguish racing-diagnoser results in the filename
     if unknown_fault_rate:
-        print(f"[ufr] rate grid = {_grid_name} -> {fault_rate_candidates}")
+        print(f"[ufr] rate grid = {_grid_name} -> {fault_rate_candidates} | "
+              f"diagnoser = {'RACING' if use_racing else 'full'}")
 
     ml_model_name = "PPO"
     render_mode = "rgb_array"
@@ -1732,6 +1736,7 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
             unknown_fault_rate=unknown_fault_rate,
             fault_rate_candidates=fault_rate_candidates,
             fixed_candidate_fault_modes=candidate_specs,
+            use_racing=use_racing,
         )
         if not output:
             skipped += 1
@@ -1767,6 +1772,23 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
     _os.makedirs(output_dir, exist_ok=True)
     exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)
     print(f"file was written at: {output_dir}/{file_path}.xlsx")
+
+
+def multiple_experiment_MiniGrid_fault_benchmark_racing(epsilon=0.04, fault_rate=0.5, num_seeds=3,
+                                                        run_folder=None, unit_start=0, unit_end=None,
+                                                        domain_name="MiniGrid_SimpleCrossing_S11N2_v0"):
+    """UNKNOWN-fault-rate MiniGrid benchmark solved by the CONFIDENCE-BOUNDED RACING diagnoser
+    (fault_identification_non_deterministic_PO_unknown_fault_rate_RACING). Same fixed benchmark as
+    multiple_experiment_MiniGrid_fault_benchmark (26 faults x seeds x visibilities, static hardest-10
+    candidates) -- only the diagnoser changes: it keeps ALL 100 (candidate_fault_mode x
+    candidate_fault_rate) pairs but spends Monte-Carlo budget only where the confidence intervals
+    still leave the ranking undecided (see references/UFR_SPEEDUP_FINDINGS.md). Always unknown-fr.
+    Results go to the run_folder you pass (use a *_racing folder so they don't collide with the full
+    ufr run); compare rank + traces against the full ufr on the SAME instances."""
+    return multiple_experiment_MiniGrid_fault_benchmark(
+        epsilon=epsilon, unknown_fault_rate=True, fault_rate=fault_rate, num_seeds=num_seeds,
+        run_folder=run_folder, unit_start=unit_start, unit_end=unit_end, domain_name=domain_name,
+        use_racing=True)
 
 
 def single_experiment_FrozenLake_NON_DETERMINSTIC():

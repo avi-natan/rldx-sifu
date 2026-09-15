@@ -682,6 +682,242 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
     return output
 
 
+def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
+        debug_print,
+        render_mode,
+        instance_seed,
+        ml_model_name,
+        domain_name,
+        observations,
+        candidate_fault_modes,
+        fault_rate_candidates,
+        epsilon,
+        confidence=0.95,
+        init_batch=30,
+        round_batch=30,
+        max_tries_cap=600,
+        max_rounds=40,
+        ):
+    """UNKNOWN-fault-rate diagnosis by CONFIDENCE-BOUNDED RACING (keeps all candidates; never drops
+    a priori). Same inputs/outputs as fault_identification_non_deterministic_PO_unknown_fault_rate,
+    so run_NON_DETERMINSTIC_single_experiment_PO can call it interchangeably.
+
+    Idea (see references/UFR_SPEEDUP_FINDINGS.md):
+      * 100 pairs = (candidate_fault_mode x candidate_fault_rate); the trajectory has GAPS.
+      * For each (pair, gap) we Monte-Carlo estimate p_hat = P(reach the gap's observed end state).
+        p_hat is an estimate: the true p sits in a confidence interval [p_lo, p_hi] (Hoeffding), which
+        NARROWS as we add traces.
+      * pair total  L(pair) = sum_gaps log p(pair, gap)   -> CI [L_lo, L_hi] (sum of the gap bounds).
+      * fault score(cf) = max over its rates of L(cf, rate)  (the ufr rule) -> CI too.
+      * Rank faults by score. A comparison cf_A vs cf_B is DECIDED when their score CIs don't overlap.
+      Racing: seed every (pair,gap) with a small batch, then spend more traces ONLY where they can
+      still change the ranking. Freeze a rate that provably can't be its fault's best rate; stop when
+      every fault's position is settled. CRN: all pairs share the gap's seed base, so a given trace
+      index uses the SAME env randomness across faults/rates -> comparison DIFFERENCES have far lower
+      variance -> decisions come faster. Safety: we only ever stop sampling something the CIs have
+      PROVED; worst case (all near-ties, e.g. Taxi) nothing is frozen and we do full work -> never
+      worse than the full method.
+    """
+    diagnosis_seed = instance_seed + SIMULATION_OFFSET
+    policy = load_trained_model(domain_name, ml_model_name)
+    simulator = make_wrapped_env(domain_name, render_mode)
+    initial_obs, _ = simulator.reset(seed=instance_seed)
+    S_0 = initial_obs
+    assert comparators[domain_name](observations[0], S_0)
+    assert len(observations) <= MAX_STATES, (
+        f"trajectory length {len(observations)} exceeds MAX_STATES {MAX_STATES}")
+    comparator = comparators[domain_name]
+
+    diagnosis_time_sec_start = time.time()
+
+    faults = list(candidate_fault_modes.keys())
+    rates = list(fault_rate_candidates)
+
+    # ----- build the gap list (start state, observed end state, hidden length, shared seed base) -----
+    gaps = []
+    last_observed_index = 0
+    for i in range(1, len(observations)):
+        if observations[i] is None:
+            continue
+        gaps.append({
+            "idx": len(gaps),
+            "start": observations[last_observed_index],
+            "end": observations[i],
+            "length": i - last_observed_index,
+            # shared across ALL (fault,rate) for this gap -> Common Random Numbers.
+            # last_observed_index puts each gap on its own residue class mod MAX_STATES (no collisions).
+            "seed": diagnosis_seed + last_observed_index,
+        })
+        last_observed_index = i
+    G = len(gaps)
+
+    # ----- per (fault, rate, gap) accumulators: hits, tries -----
+    acc = {(f, r, g["idx"]): {"hits": 0, "tries": 0} for f in faults for r in rates for g in gaps}
+    frozen_rate = set()   # (f, r) proven not to be fault f's best rate
+
+    delta = 1.0 - confidence
+    _hoeff_c = math.log(2.0 / delta)   # Hoeffding: half-width = sqrt(_hoeff_c / (2n))
+
+    def sample(f, r, gidx, n):
+        """Run n MORE traces for (f,r,gap), continuing the seed sequence (CRN-aligned by index)."""
+        a = acc[(f, r, gidx)]
+        g = gaps[gidx]
+        fm = candidate_fault_modes[f]
+        base = g["seed"]; start = g["start"]; end = g["end"]; length = g["length"]
+        rng = random.Random()
+        hits = 0
+        for i in range(a["tries"], a["tries"] + n):
+            s = base + i * MAX_STATES
+            rng.seed(s)
+            nxt = execute_one_trace(start, length, fm, r, domain_name, s, rng,
+                                    simulator, policy, False)
+            if comparator(nxt, end):
+                hits += 1
+        a["hits"] += hits
+        a["tries"] += n
+
+    def p_ci(f, r, gidx):
+        a = acc[(f, r, gidx)]; n = a["tries"]
+        if n == 0:
+            return 1e-12, 1.0
+        ph = a["hits"] / n
+        h = math.sqrt(_hoeff_c / (2.0 * n))
+        return max(ph - h, 1e-12), min(ph + h, 1.0)
+
+    def L_ci(f, r):
+        lo = hi = 0.0
+        for g in gaps:
+            plo, phi = p_ci(f, r, g["idx"])
+            lo += math.log(plo); hi += math.log(phi)
+        return lo, hi
+
+    def L_point(f, r):
+        s = 0.0
+        for g in gaps:
+            a = acc[(f, r, g["idx"])]
+            ph = a["hits"] / a["tries"] if a["tries"] else 1e-12
+            s += math.log(max(ph, 1e-12))
+        return s
+
+    def score_ci(f):
+        los = []; his = []
+        for r in rates:
+            lo, hi = L_ci(f, r); los.append(lo); his.append(hi)
+        return max(los), max(his)   # conservative: best rate's lower / any rate's upper
+
+    # ----- 1. seed every (pair, gap) with a small batch -----
+    for f in faults:
+        for r in rates:
+            for g in gaps:
+                sample(f, r, g["idx"], init_batch)
+
+    # ----- 2. racing rounds -----
+    num_rounds = 0
+    stop_reason = "decided"
+    while True:
+        # (a) rate elimination: freeze a rate whose UPPER bound is below the best rate's LOWER bound
+        for f in faults:
+            alive = [r for r in rates if (f, r) not in frozen_rate]
+            if len(alive) <= 1:
+                continue
+            lcis = {r: L_ci(f, r) for r in alive}
+            best_lo = max(lcis[r][0] for r in alive)
+            for r in alive:
+                if lcis[r][1] < best_lo:
+                    frozen_rate.add((f, r))
+
+        # (b) contended fault comparisons: score CIs that overlap
+        sc = {f: score_ci(f) for f in faults}
+        contended = set()
+        for a_i in range(len(faults)):
+            for b_i in range(a_i + 1, len(faults)):
+                fa, fb = faults[a_i], faults[b_i]
+                if not (sc[fa][0] > sc[fb][1] or sc[fb][0] > sc[fa][1]):
+                    contended.add(fa); contended.add(fb)
+
+        if not contended:
+            stop_reason = "decided"; break
+        if num_rounds >= max_rounds:
+            stop_reason = "max_rounds"; break
+
+        # (c) allocate SURGICALLY: for each contended fault and each of its ALIVE rates, refine only
+        # the single gap whose p-CI is WIDEST (the estimate whose tightening most shrinks that rate's
+        # L band, hence the fault's score band). Concentrates budget instead of re-sampling every gap.
+        did_sample = False
+        for f in contended:
+            for r in rates:
+                if (f, r) in frozen_rate:
+                    continue
+                widest_gidx, widest_w = None, -1.0
+                for g in gaps:
+                    plo, phi = p_ci(f, r, g["idx"])
+                    if acc[(f, r, g["idx"])]["tries"] >= max_tries_cap:
+                        continue
+                    w = phi - plo
+                    if w > widest_w:
+                        widest_w, widest_gidx = w, g["idx"]
+                if widest_gidx is not None:
+                    sample(f, r, widest_gidx, round_batch)
+                    did_sample = True
+        if not did_sample:
+            stop_reason = "budget_exhausted"; break
+        num_rounds += 1
+
+    # ----- 3. build outputs (mirror the full ufr method) -----
+    log_prob_total_per_fault_and_rate = {f: {r: L_point(f, r) for r in rates} for f in faults}
+    best_rate_per_fault = {}
+    best_logL_per_fault = {}
+    for f in faults:
+        br = max(rates, key=lambda r: log_prob_total_per_fault_and_rate[f][r])
+        best_rate_per_fault[f] = br
+        best_logL_per_fault[f] = log_prob_total_per_fault_and_rate[f][br]
+
+    sorted_faults = sorted(best_logL_per_fault.items(), key=lambda x: x[1], reverse=True)
+    T = max(G, 1)
+    sorted_faults_geo = [(fault, math.exp(logL / T)) for fault, logL in sorted_faults]
+
+    total_traces = sum(a["tries"] for a in acc.values())
+    # what the FULL method would have sampled if every (pair,gap) ran to the cap (a conservative
+    # upper baseline for the speedup, machine-independent):
+    full_baseline_traces = len(acc) * max_tries_cap
+
+    extra_output = ""
+    for fault, logL in sorted_faults:
+        curr = (f"Fault: {fault}, logL: {logL:.6f}, Best Estimated Rate: {best_rate_per_fault[fault]}")
+        extra_output += curr + "\n"
+
+    diagnosis_time_sec = time.time() - diagnosis_time_sec_start
+    output = {}
+    output["diagnosis_time_sec"] = diagnosis_time_sec
+    output["diagnosis_time_ms"] = diagnosis_time_sec * 1000
+    output["avg_gap_time"] = 0.0
+    output["num_gaps"] = G
+    output["sorted_faults"] = sorted_faults
+    output["sorted_faults_with_exp_val"] = sorted_faults_geo
+    output["best_rate_per_fault"] = best_rate_per_fault
+    output["log_prob_total_per_fault_and_rate"] = log_prob_total_per_fault_and_rate
+    output["fault_rate_candidates"] = fault_rate_candidates
+    output["observations"] = observations
+    output["observations_len"] = len(observations)
+    output["extra_output"] = extra_output
+    # racing-specific stats
+    output["racing_total_traces"] = total_traces
+    output["racing_full_baseline_traces"] = full_baseline_traces
+    output["racing_trace_speedup_vs_cap"] = full_baseline_traces / total_traces if total_traces else None
+    output["racing_num_rounds"] = num_rounds
+    output["racing_frozen_rate_pairs"] = len(frozen_rate)
+    output["racing_stop_reason"] = stop_reason
+    output["racing_confidence"] = confidence
+    # keep the columns the ufr path also emits, so the xlsx schema lines up
+    output["adaptive_total_calls"] = len(acc)
+    output["adaptive_avg_real_tries"] = total_traces / len(acc) if acc else 0
+
+    print(f"\n===== RACING done: stop={stop_reason} rounds={num_rounds} "
+          f"traces={total_traces} (cap-baseline {full_baseline_traces}, "
+          f"~{output['racing_trace_speedup_vs_cap']:.1f}x) frozen_rates={len(frozen_rate)}/"
+          f"{len(faults)*len(rates)} =====")
+    return output
+
 
 def fault_identification_non_deterministic_PO(
         debug_print, render_mode,

@@ -11,7 +11,8 @@ from h_consts import SEED_BLOCK, FAULT_OFFSET, MASK_OFFSET, CANDIDATE_OFFSET, SI
 from h_fault_model_generator import FaultModelGeneratorDiscrete
 from p_diagnosers import diagnosers, SIF, SN, W, SIFU, SIFU2, SIFU3, SIFU4, SIFU5, SIFU6, SIFU7, SIFU8, \
     fault_identification_non_deterministic_FO, fault_identification_non_deterministic_PO, \
-    fault_identification_non_deterministic_PO_unknown_fault_rate
+    fault_identification_non_deterministic_PO_unknown_fault_rate, \
+    fault_identification_non_deterministic_PO_unknown_fault_rate_RACING
 from p_executor import execute
 
 
@@ -769,7 +770,8 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
                               fault_rate_candidates,
                               epsilon,
                               multi_experiment=False,
-                              fixed_candidate_fault_modes=None):
+                              fixed_candidate_fault_modes=None,
+                              use_racing=False):
 
     #### prepare the records database to be written to the excel file
     records = []
@@ -827,7 +829,19 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
 
     # ### run SIF
 
-    if unknown_fault_rate:
+    if unknown_fault_rate and use_racing:
+        raw_output = fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
+            debug_print=debug_print,
+            render_mode=render_mode,
+            instance_seed=instance_seed,
+            ml_model_name=ml_model_name,
+            domain_name=domain_name,
+            observations=masked_observations,
+            candidate_fault_modes=candidate_fault_modes,
+            epsilon=epsilon,
+            fault_rate_candidates=fault_rate_candidates
+        )
+    elif unknown_fault_rate:
         raw_output = fault_identification_non_deterministic_PO_unknown_fault_rate(
             debug_print=debug_print,
             render_mode=render_mode,
