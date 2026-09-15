@@ -963,6 +963,9 @@ def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
     init_batch = int(_os.environ.get("MG_V1_INIT", init_batch))
     round_batch = int(_os.environ.get("MG_V1_ROUND", round_batch))
     max_rounds = int(_os.environ.get("MG_V1_ROUNDS", max_rounds))
+    # per-(pair,gap) sample cap: once a gap is this well estimated, stop pouring budget into it
+    # (mirrors full-ufr's per-estimate max_tries). Tunable via MG_V1_CAP.
+    max_tries_cap = int(_os.environ.get("MG_V1_CAP", 1200))
 
     diagnosis_seed = instance_seed + SIMULATION_OFFSET
     policy = load_trained_model(domain_name, ml_model_name)
@@ -1011,6 +1014,20 @@ def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
             Lp += math.log(max(ph, 1e-12)); Llo += math.log(plo); Lhi += math.log(max(phi, 1e-12))
         return Lp, Llo, Lhi
 
+    def partial_interval(f, r, upto_gidx):
+        """(L_point, L_lo, L_hi) over ONLY gaps 0..upto_gidx that have been sampled -- used for
+        gap-incremental freezing (compare rates on the gaps seen so far)."""
+        Lp = Llo = Lhi = 0.0
+        for gi in range(upto_gidx + 1):
+            a = acc[(f, r, gi)]; n = a["n"]
+            if n == 0:
+                continue
+            ph = a["hits"] / n
+            margin = 1.96 * math.sqrt(ph * (1.0 - ph) / n)
+            plo = max(ph - margin, 1e-12); phi = min(max(ph + margin, 1e-12), 1.0)
+            Lp += math.log(max(ph, 1e-12)); Llo += math.log(plo); Lhi += math.log(max(phi, 1e-12))
+        return Lp, Llo, Lhi
+
     def fault_score(f):
         live = [r for r in rates if (f, r) not in frozen] or rates
         ivs = {r: interval_of_pair(f, r) for r in live}
@@ -1018,7 +1035,7 @@ def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
         Lp, Llo, Lhi = ivs[best_r]
         return Lp, Llo, Lhi, best_r
 
-    # ----- 0. initial batch for every (pair, gap) -----
+    # ----- 0. initial small batch for every (pair, gap) -----
     for f in faults:
         for r in rates:
             for g in gaps:
@@ -1056,13 +1073,31 @@ def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
         if num_rounds >= max_rounds:
             stop_reason = "budget"; break
 
-        # (d) spend more only on undecided faults, only on their LIVE (non-frozen) rates
+        # (d) spend more only on undecided faults, only on their LIVE (non-frozen) rates -- and
+        # SURGICALLY: for each such pair, refine ONLY its single widest-CI gap (the one term whose
+        # uncertainty most inflates the pair's interval). Refining all gaps every round is G x too
+        # much work and is what made v1 slower than brute force; one gap per pair per round matches
+        # the early fast v1. A gap already at the per-gap sample cap is skipped.
+        did_sample = False
         for f in undecided:
             for r in rates:
                 if (f, r) in frozen:
                     continue
+                widest_gidx, widest_w = None, -1.0
                 for g in gaps:
-                    sample(f, r, g["idx"], round_batch)
+                    a = acc[(f, r, g["idx"])]; n = a["n"]
+                    if n >= max_tries_cap:
+                        continue
+                    ph = a["hits"] / n if n else 1e-12
+                    margin = 1.96 * math.sqrt(ph * (1.0 - ph) / n) if n else 1.0
+                    plo = max(ph - margin, 1e-12); phi = min(max(ph + margin, 1e-12), 1.0)
+                    w = phi - plo
+                    if w > widest_w:
+                        widest_w, widest_gidx = w, g["idx"]
+                if widest_gidx is not None:
+                    sample(f, r, widest_gidx, round_batch); did_sample = True
+        if not did_sample:
+            stop_reason = "budget"; break
         num_rounds += 1
 
     # ----- 2. build the standard output (same schema as the other ufr diagnosers) -----
