@@ -1767,8 +1767,10 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
     file_path = (f"minigrid_PO_{fr_token}_noise_{noise_tok}_fr_{fr_tok}_eps_{eps_tok}"
                  f"_UNITS_{unit_start}-{unit_end}")
     # Keep per-task xlsx in an xlsx/ subfolder of the run folder, so it sits alongside logs/
-    # and plots/ (run_folder/{xlsx,logs,plots}) instead of loose at the top.
-    output_dir = _os.path.join(domain_results_dir(domain_name, run_folder), "xlsx")
+    # and plots/ (run_folder/{xlsx,logs,plots}) instead of loose at the top. Exploratory racing runs
+    # go under ufr_experiments/ (kept OUT of the main experimental results/ tree until validated).
+    _results_root = "ufr_experiments" if use_racing else "experimental results"
+    output_dir = _os.path.join(domain_results_dir(domain_name, run_folder, results_root=_results_root), "xlsx")
     _os.makedirs(output_dir, exist_ok=True)
     exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)
     print(f"file was written at: {output_dir}/{file_path}.xlsx")
