@@ -1,0 +1,18 @@
+PLOT PROVENANCE
+===============
+These plots were created by : C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental plot scripts\plot_v1_vs_full_vs_known.py
+Generated                   : 2026-09-15 19:16:45
+Command                     : experimental plot scripts/plot_v1_vs_full_vs_known.py
+
+Plots created in this folder (C:\Users\User\Desktop\rldx_repo\rldx-sifu\ufr_experiments\comparison_plots_v1_full_known):
+  - Cross0_7__visibility_vs_rank.png
+  - Cross0_7__visibility_vs_time.png
+  - Cross0_5__visibility_vs_rank.png
+  - Cross0_5__visibility_vs_time.png
+  - Empty0_5__visibility_vs_rank.png
+  - Empty0_5__visibility_vs_time.png
+  - Taxi__visibility_vs_rank.png
+  - Taxi__visibility_vs_time.png
+
+Input data read from:
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\ufr_experiments\comparison_plots_v1_full_known\plot_data.csv
