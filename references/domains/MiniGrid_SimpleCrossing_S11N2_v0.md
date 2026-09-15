@@ -128,8 +128,18 @@ Driver: `multiple_experiment_MiniGrid_fault_benchmark(..., domain_name="MiniGrid
   **Markedly more diagnosable than Empty** at the same noise (Empty 2.34@0.7 / 2.93@0.5) — walls+gaps
   constrain trajectories and the longer rollouts (median ~119 states @0.5, ~99 @0.7) give more signal.
   Truncations at the cap: 240/390 @0.5, 145/390 @0.7, **0 no-fault red-flags** (all expected
-  goal-blocking faults). Plots in each run's `plots/` + `known/noise_comparison/plots/`. A noise-0.5
-  **ufr** variant is also run (`unknown/minigrid_bench_noise0_5_ufr/`).
+  goal-blocking faults). Plots in each run's `plots/` + `known/noise_comparison/plots/`.
+
+- **Unknown fault rate (ufr) variant** — `unknown/minigrid_bench_noise{0_5,0_7}_ufr/` (390 each):
+
+  | noise | known rank | ufr rank | known top-1 | ufr top-1 | ufr time cost |
+  |---|---|---|---|---|---|
+  | 0.5 | 1.979 | 2.108 | 0.546 | 0.508 | 9.6× (58→559s median) |
+  | 0.7 | 1.608 | 1.579 | 0.708 | 0.703 | 8.2× (42→342s median) |
+
+  Same story as Empty: **unknown fault rate is ~free in accuracy** (rank barely moves; 0.7 is within
+  noise), **~9× the compute** (diagnoser sweeps ~10 fault-rate candidates). Comparison plots (rank &
+  time vs visibility, per noise) in `known_vs_unknown_comparison/`.
 
 ## 12. Gotchas / caveats
 - **Policy must GENERALIZE** across layouts — a policy that memorized one layout will misnavigate

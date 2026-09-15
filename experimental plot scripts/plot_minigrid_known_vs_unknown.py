@@ -1,18 +1,18 @@
-"""MiniGrid Empty known- vs unknown-fault-rate comparison at noise 0.5, along fault rate.
+"""MiniGrid known- vs unknown-fault-rate comparison, along VISIBILITY, per (domain, noise).
 
-Both runs are at noise 0.5 and epsilon 0.04, over the same 26 faults x 3 seeds x 5 visibilities
-x 3 injected fault rates. X = injected fault rate (0.3 / 0.5 / 0.8); two lines (known, unknown),
-each POOLED over all visibility levels (and seeds/faults) at that fault rate (SEM error bars) --
-i.e. every instance at a fault rate contributes, exactly like the FrozenLake known-vs-unknown plot.
+Both the known-fr and ufr runs at a given noise share the same benchmark (26 faults x 3 seeds x 5
+visibilities) at one injected fault rate. X = percent visible states (20..100); two lines (known,
+unknown), each pooled over seeds/faults at that visibility (SEM error bars). Produces, into
+<domain>/known_vs_unknown_comparison/:
+  - avg real-fault rank  -> minigrid_noise{tag}_rank_known_vs_unknown.png
+  - avg diagnosis time   -> minigrid_noise{tag}_time_known_vs_unknown.png (unknown/known ratio annotated)
 
-Produces, into MiniGrid_Empty_16x16_v0/known_vs_unknown_comparison/:
-  - avg real-fault rank  -> minigrid_noise0_5_rank_known_vs_unknown.png
-  - avg diagnosis time   -> minigrid_noise0_5_time_known_vs_unknown.png   (unknown/known ratio annotated)
-
-Run from repo root:
-  ./.venv_domains/Scripts/python.exe "experimental plot scripts/plot_minigrid_known_vs_unknown.py"
+Args: [noise_tag] [domain]. Defaults: 0_5, MiniGrid_SimpleCrossing_S11N2_v0.
+Run from repo root, e.g.:
+  ./.venv_domains/Scripts/python.exe "experimental plot scripts/plot_minigrid_known_vs_unknown.py" 0_5 MiniGrid_SimpleCrossing_S11N2_v0
 """
 import os
+import sys
 import glob
 
 import numpy as np
@@ -25,14 +25,17 @@ from plot_provenance import write_plot_provenance
 
 RANK_COL = "real_fault_rank"
 TIME_COL = "diagnosis_time_sec"
-FR_COL = "real_fault_prob"
+VIS_COL = "percent_visible_states"
 
 KNOWN_COLOR = "#1f77b4"
 UNKNOWN_COLOR = "#d62728"
 
-DOMAIN = "MiniGrid_Empty_16x16_v0"
-KNOWN_RUN = os.path.join("known", "minigrid_bench_noise0_5")
-UNKNOWN_RUN = os.path.join("unknown", "minigrid_bench_noise0_5_ufr")
+NOISE_TAG = sys.argv[1] if len(sys.argv) > 1 else "0_5"
+DOMAIN = sys.argv[2] if len(sys.argv) > 2 else "MiniGrid_SimpleCrossing_S11N2_v0"
+KNOWN_RUN = os.path.join("known", f"minigrid_bench_noise{NOISE_TAG}")
+UNKNOWN_RUN = os.path.join("unknown", f"minigrid_bench_noise{NOISE_TAG}_ufr")
+_PRETTY = {"MiniGrid_Empty_16x16_v0": "MiniGrid Empty-16x16",
+           "MiniGrid_SimpleCrossing_S11N2_v0": "MiniGrid SimpleCrossing-S11N2"}.get(DOMAIN, DOMAIN)
 
 
 def _load_run(run_dir):
@@ -40,35 +43,33 @@ def _load_run(run_dir):
     if not files:
         raise SystemExit(f"no result xlsx found in {run_dir}")
     df = pd.concat([pd.read_excel(f) for f in files], ignore_index=True)
-    df = df[df[RANK_COL].notna()].copy()
-    df[FR_COL] = df[FR_COL].round(2)
-    return df
+    return df[df[RANK_COL].notna()].copy()
 
 
-def _agg_by_fr(df, value_col, frs):
+def _agg_by_vis(df, value_col, viss):
     ys, sems = [], []
-    for fr in frs:
-        s = df[df[FR_COL] == fr][value_col]
+    for v in viss:
+        s = df[df[VIS_COL] == v][value_col]
         ys.append(s.mean())
         sems.append(s.std(ddof=1) / np.sqrt(len(s)) if len(s) > 1 else 0.0)
     return ys, sems
 
 
-def compare_plot(known, unknown, frs, value_col, ylabel, title, out_path, annotate_ratio=False):
-    ky, ks = _agg_by_fr(known, value_col, frs)
-    uy, us = _agg_by_fr(unknown, value_col, frs)
+def compare_plot(known, unknown, viss, value_col, ylabel, title, out_path, annotate_ratio=False):
+    ky, ks = _agg_by_vis(known, value_col, viss)
+    uy, us = _agg_by_vis(unknown, value_col, viss)
     plt.figure(figsize=(7.5, 4.8))
-    plt.errorbar(frs, ky, yerr=ks, fmt="o-", capsize=4, markersize=7, linewidth=2,
+    plt.errorbar(viss, ky, yerr=ks, fmt="o-", capsize=4, markersize=7, linewidth=2,
                  color=KNOWN_COLOR, label="known fault rate")
-    plt.errorbar(frs, uy, yerr=us, fmt="s--", capsize=4, markersize=7, linewidth=2,
+    plt.errorbar(viss, uy, yerr=us, fmt="s--", capsize=4, markersize=7, linewidth=2,
                  color=UNKNOWN_COLOR, label="unknown fault rate")
     if annotate_ratio:
-        for fr, kk, uu in zip(frs, ky, uy):
+        for v, kk, uu in zip(viss, ky, uy):
             if kk:
-                plt.annotate(f"{uu / kk:.1f}x", (fr, uu), textcoords="offset points",
+                plt.annotate(f"{uu / kk:.1f}x", (v, uu), textcoords="offset points",
                              xytext=(0, 8), ha="center", fontsize=9, color=UNKNOWN_COLOR)
-    plt.xticks(frs)
-    plt.xlabel("Injected fault rate")
+    plt.xticks(viss)
+    plt.xlabel("Percent visible states")
     plt.ylabel(ylabel)
     plt.title(title)
     plt.grid(True, alpha=0.3)
@@ -88,29 +89,26 @@ def main():
     unknown_dir = os.path.join(domain_root, UNKNOWN_RUN)
     known = _load_run(known_dir)
     unknown = _load_run(unknown_dir)
-    print(f"known: {len(known)} rows | unknown: {len(unknown)} rows (all visibilities pooled)")
+    noise = known["minigrid_noise"].iloc[0]
+    print(f"[{DOMAIN} noise {noise}] known: {len(known)} rows | unknown: {len(unknown)} rows")
 
-    frs = sorted(set(known[FR_COL].unique()) & set(unknown[FR_COL].unique()))
-    if not frs:
-        raise SystemExit("No shared fault rates between known and unknown.")
-    print(f"Shared fault rates: {frs}")
-
+    viss = sorted(set(known[VIS_COL].unique()) & set(unknown[VIS_COL].unique()))
     out_dir = os.path.join(domain_root, "known_vs_unknown_comparison")
     os.makedirs(out_dir, exist_ok=True)
     created = []
 
-    created.append(compare_plot(known, unknown, frs, RANK_COL, "Avg real-fault rank",
-        "MiniGrid Empty (noise 0.5): rank by fault rate, known vs unknown fr",
-        os.path.join(out_dir, "minigrid_noise0_5_rank_known_vs_unknown.png")))
-    created.append(compare_plot(known, unknown, frs, TIME_COL, "Avg diagnosis time (sec)",
-        "MiniGrid Empty (noise 0.5): time by fault rate, known vs unknown fr",
-        os.path.join(out_dir, "minigrid_noise0_5_time_known_vs_unknown.png"),
+    created.append(compare_plot(known, unknown, viss, RANK_COL, "Avg real-fault rank",
+        f"{_PRETTY} (noise {noise}): rank vs visibility, known vs unknown fr",
+        os.path.join(out_dir, f"minigrid_noise{NOISE_TAG}_rank_known_vs_unknown.png")))
+    created.append(compare_plot(known, unknown, viss, TIME_COL, "Avg diagnosis time (sec)",
+        f"{_PRETTY} (noise {noise}): time vs visibility, known vs unknown fr",
+        os.path.join(out_dir, f"minigrid_noise{NOISE_TAG}_time_known_vs_unknown.png"),
         annotate_ratio=True))
 
     write_plot_provenance(out_dir, created,
                           input_sources=[known_dir, unknown_dir],
                           script_path=os.path.abspath(__file__))
-    print("\nDone.")
+    print("Done.")
 
 
 if __name__ == "__main__":
