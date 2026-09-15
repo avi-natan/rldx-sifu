@@ -184,6 +184,13 @@ if __name__ == '__main__':
              "where the ranking is still undecided). 'racing' implies unknown fault rate."
     )
 
+    parser.add_argument(
+        "--racing",
+        action="store_true",
+        help="Use the confidence-bounded RACING ufr diagnoser for the Taxi hard-class2 experiment "
+             "(implies unknown fault rate). Results go to ufr_experiments/ (kept out of the main tree)."
+    )
+
     args = parser.parse_args()
 
     try:
@@ -301,6 +308,7 @@ if __name__ == '__main__':
                 num_seeds=100,
                 run_folder=args.run_folder,
                 unknown_fault_rate=args.unknown_fault_rate,
+                use_racing=args.racing,
             )
 
 

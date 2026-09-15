@@ -1302,7 +1302,7 @@ def multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_
 
 
 def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_folder=None,
-                                               unknown_fault_rate=False):
+                                               unknown_fault_rate=False, use_racing=False):
     """Taxi-v4 HARD class-2 epsilon experiment (the "second experiment").
 
     Mirrors multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO, but the instances come from
@@ -1334,11 +1334,15 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
     debug_print = False
     num_candidate_fault_modes = 10
 
+    if use_racing:
+        unknown_fault_rate = True   # racing is an unknown-fault-rate diagnoser
     fault_rate_list = [0.3]                              # FIXED injected rate
     percent_visible_states_list = [20, 40, 60, 80, 100]
     # Rate grid the UNKNOWN-rate diagnoser searches over (unused when the rate is known).
     fault_rate_candidates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0] if unknown_fault_rate else None
     fr_token = "unknown_fr" if unknown_fault_rate else "known_fr"
+    if use_racing:
+        fr_token += "_racing"
 
     # Build the first num_seeds CLASS-2 instances (least-used a*, count >= 2).
     bench = build_benchmark(seeds_per_class=num_seeds, classes=(2,), verbose=False)
@@ -1374,7 +1378,8 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
                     epsilon=epsilon,
                     unknown_fault_rate=unknown_fault_rate,
                     fault_rate_candidates=fault_rate_candidates,
-                    fixed_candidate_fault_modes=candidate_fault_modes)
+                    fixed_candidate_fault_modes=candidate_fault_modes,
+                    use_racing=use_racing)
 
                 if not output:
                     skipped += 1
@@ -1408,7 +1413,8 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
     file_suffix = str(epsilon).replace(".", "_")
     file_path = f"taxi_v4_hard_class2_PO_{fr_token}_epsilon_{file_suffix}_SEEDS_{num_seeds}"
 
-    output_dir = domain_results_dir(domain_name, run_folder)
+    _results_root = "ufr_experiments" if use_racing else "experimental results"
+    output_dir = domain_results_dir(domain_name, run_folder, results_root=_results_root)
     exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)
     print(f"file was written at: {output_dir}/{file_path}.xlsx")
 
