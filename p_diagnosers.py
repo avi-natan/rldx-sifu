@@ -1048,10 +1048,19 @@ def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
         return Lp, Llo, Lhi
 
     def fault_score(f):
+        # A fault's score is max_r L(f, r) -- a MAXIMUM over its rates. The correct CI on that max is
+        # (max point, max low-end, max high-end) over the live rates, NOT the single point-best rate's
+        # interval: an under-sampled live rate has a wide interval whose high-end can exceed the
+        # point-best rate's high-end, and using only best_r would UNDER-state the fault's upper
+        # uncertainty -> declaring it "decided" prematurely while a wider live rate could still lift it
+        # into overlap. Aggregating over all live rates keeps such a fault undecided until that rate is
+        # narrowed by more sampling.
         live = [r for r in rates if (f, r) not in frozen] or rates
         ivs = {r: interval_of_pair(f, r) for r in live}
         best_r = max(live, key=lambda r: ivs[r][0])
-        Lp, Llo, Lhi = ivs[best_r]
+        Lp = ivs[best_r][0]                         # point = best point score
+        Llo = max(ivs[r][1] for r in live)          # low   = max of the low-ends
+        Lhi = max(ivs[r][2] for r in live)          # high  = max of the high-ends
         return Lp, Llo, Lhi, best_r
 
     # ----- 0. initial small batch for every (pair, gap) -----
