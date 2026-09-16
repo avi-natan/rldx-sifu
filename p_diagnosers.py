@@ -1241,6 +1241,12 @@ def _v2_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
     min_tries = int(_os.environ.get("MG_V2_MIN", min_tries))
     max_tries = int(_os.environ.get("MG_V2_MAX", max_tries))
     batch_size = int(_os.environ.get("MG_V2_BATCH", batch_size))
+    # L-CI aggregation: "tight" = proper quadrature sqrt(sum half_g^2) (narrow -> freezing/deciding
+    # fire more); "loose" = sum of half-widths (conservative). gap order: "spread" = most-
+    # discriminative gaps first (scheme A: variance across faults of the fault's best log-reproduce
+    # prob), "natural" = trajectory order. Ordering only affects speed, never the final rank.
+    ci_mode = _os.environ.get("MG_V2_CI", "tight")
+    gap_order_mode = _os.environ.get("MG_V2_GAPORDER", "spread")
 
     diagnosis_seed = instance_seed + SIMULATION_OFFSET
     policy = load_trained_model(domain_name, ml_model_name)
@@ -1298,14 +1304,17 @@ def _v2_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
         return False
 
     def pair_interval(f, r):
-        """(L_point, L_lo, L_hi) -- loose CI (sum of per-gap Wald log endpoints) over ALL gaps. Every
-        pair has an estimate for every gap, so pair scores are summed over the SAME gap set and are
-        directly comparable."""
-        Lp = Llo = Lhi = 0.0
+        """(L_point, L_lo, L_hi) over ALL gaps (every pair has all gaps -> scores comparable). The
+        half-width is TIGHT (proper quadrature sqrt(sum half_g^2)) by default, or LOOSE (sum half_g)
+        under MG_V2_CI=loose. Tight is much narrower, so freezing/deciding fire more."""
+        Lp = 0.0; loose = 0.0; sq = 0.0
         for g in gaps:
             p, plo, phi = gap_ci(acc[(f, r, g["idx"])])
-            Lp += math.log(max(p, 1e-12)); Llo += math.log(plo); Lhi += math.log(max(phi, 1e-12))
-        return Lp, Llo, Lhi
+            Lp += math.log(max(p, 1e-12))
+            h = 0.5 * (math.log(max(phi, 1e-12)) - math.log(max(plo, 1e-12)))
+            loose += h; sq += h * h
+        H = math.sqrt(sq) if ci_mode == "tight" else loose
+        return Lp, Lp - H, Lp + H
 
     def fault_score(f):
         live = [r for r in rates if (f, r) not in frozen_rates] or rates
@@ -1322,11 +1331,9 @@ def _v2_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
             for g in gaps:
                 sample(f, r, g["idx"], init_batch)
 
-    # ----- 1. REFINE contended pairs toward epsilon; freezing/deciding only GATE refinement -----
-    num_rounds = 0
-    stop_reason = "settled"
-    while True:
-        # (a) freeze rates that can't be their fault's best (v1 rule, on full-gap intervals)
+    def refreeze_decide():
+        """Freeze rates that can't be their fault's best, and mark faults whose rank is now fixed as
+        decided. Returns the still-undecided fault set. Uses the full-gap (tight) intervals."""
         for f in faults:
             if f in decided_faults:
                 continue
@@ -1338,36 +1345,54 @@ def _v2_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
             for r in live:
                 if ivs[r][2] < best_low:
                     frozen_rates.add((f, r))
-
-        # (b) decide faults whose rank is fixed (confidently separated from both neighbours)
         sc = {f: fault_score(f) for f in faults}
         order = sorted(faults, key=lambda f: sc[f][0], reverse=True)
-        undecided = set()
+        undec = set()
         for k in range(len(order) - 1):
             A, B = order[k], order[k + 1]
             if not (sc[A][1] > sc[B][2]):
-                undecided.add(A); undecided.add(B)
+                undec.add(A); undec.add(B)
         for f in faults:
-            if f not in undecided:
+            if f not in undec:
                 decided_faults.add(f)
+        return undec
 
+    # ----- gap ORDER (scheme A): most-discriminative first = variance across faults of the fault's
+    # best log-reproduce-prob on the gap, from the init batch. Ordering only affects speed.
+    def gap_spread(gidx):
+        vals = []
+        for f in faults:
+            a_best = max((acc[(f, r, gidx)] for r in rates), key=lambda a: (a["hits"] / a["n"] if a["n"] else 0.0))
+            p = a_best["hits"] / a_best["n"] if a_best["n"] else 1e-12
+            vals.append(math.log(max(p, 1e-12)))
+        mu = sum(vals) / len(vals)
+        return sum((v - mu) ** 2 for v in vals) / len(vals)
+    gidx_all = [g["idx"] for g in gaps]
+    gap_order = sorted(gidx_all, key=gap_spread, reverse=True) if gap_order_mode == "spread" else gidx_all
+
+    # ----- 1. REFINE gap-by-gap in decisiveness order; re-freeze/decide after each gap so a pair that
+    # dies on a decisive gap skips refinement of the remaining (less decisive) gaps -----
+    num_rounds = 0
+    stop_reason = "settled"
+    undecided = refreeze_decide()
+    for gidx in gap_order:
         if not undecided:
             stop_reason = "decided"; break
-
-        # (c) refine: push undecided faults' live rates' unsettled gaps toward epsilon
-        did_sample = False
-        for f in undecided:
-            for r in rates:
-                if (f, r) in frozen_rates:
-                    continue
-                for g in gaps:
-                    a = acc[(f, r, g["idx"])]
+        # drive THIS gap to epsilon for the still-contended pairs, re-checking freezing as it tightens
+        while True:
+            did = False
+            for f in list(undecided):
+                for r in rates:
+                    if (f, r) in frozen_rates:
+                        continue
+                    a = acc[(f, r, gidx)]
                     if gap_settled(a):
                         continue
-                    sample(f, r, g["idx"], batch_size); did_sample = True
-        if not did_sample:
-            stop_reason = "settled"; break
-        num_rounds += 1
+                    sample(f, r, gidx, batch_size); did = True
+            num_rounds += 1
+            undecided = refreeze_decide()
+            if not did or not undecided:
+                break
 
     # ----- 2. build output (same schema family as the other ufr diagnosers) -----
     log_prob_total_per_fault_and_rate = {f: {r: pair_interval(f, r)[0] for r in rates} for f in faults}
@@ -1400,11 +1425,14 @@ def _v2_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
         "v2_decided_faults": len(decided_faults),
         "v2_stop_reason": stop_reason,
         "v2_epsilon": epsilon,
+        "v2_ci_mode": ci_mode,
+        "v2_gap_order": gap_order_mode,
         "adaptive_total_calls": len(acc),
         "adaptive_avg_real_tries": total_traces / len(acc) if acc else 0,
     }
     print(f"\n===== V2 done: stop={stop_reason} rounds={num_rounds} traces={total_traces} "
-          f"frozen_rates={len(frozen_rates)}/{len(faults)*len(rates)} decided_faults={len(decided_faults)}/{len(faults)} =====")
+          f"frozen_rates={len(frozen_rates)}/{len(faults)*len(rates)} decided_faults={len(decided_faults)}/{len(faults)} "
+          f"ci={ci_mode} gaporder={gap_order_mode} =====")
     return output
 
 
