@@ -973,6 +973,11 @@ def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
     # so easy gaps stop cheaply. eps_stop defaults to the run's epsilon; min_tries mirrors full's 100.
     eps_stop = float(_os.environ.get("MG_V1_EPS", epsilon))
     min_tries = int(_os.environ.get("MG_V1_MIN", 100))
+    # L-CI aggregation: "loose" sums the per-gap log half-widths (conservative, over-wide -- so
+    # freezing/deciding rarely fire, and budget never concentrates on the best rate); "tight" uses
+    # proper error propagation sqrt(sum half_g^2) (gaps independent), which is much narrower, lets
+    # freezing actually prune losing rates, and concentrates budget on the discriminative best rate.
+    ci_mode = _os.environ.get("MG_V1_CI", "loose")
 
     _Z = 1.96
     _Z2 = _Z * _Z
@@ -1039,14 +1044,21 @@ def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
             a["n"] += 1
 
     def interval_of_pair(f, r):
-        """(L_point, L_lo, L_hi) for a pair -- loose CI: sum of per-gap log endpoints, using the
-        Wilson interval so a 0-hit (or all-hit) gap is not falsely pinned with zero width."""
-        Lp = Llo = Lhi = 0.0
+        """(L_point, L_lo, L_hi) for a pair. L_point = sum_g log(center). The CI is either LOOSE
+        (sum of per-gap log half-widths -- conservative) or TIGHT (sqrt of sum of squared half-widths
+        -- proper independent-gap error propagation, much narrower). Wilson endpoints keep a 0-hit /
+        all-hit gap from being falsely pinned with zero width."""
+        Lp = 0.0
+        loose = 0.0        # sum of half-widths
+        sq = 0.0           # sum of squared half-widths
         for g in gaps:
             a = acc[(f, r, g["idx"])]
             c, lo, hi = wilson(a["hits"], a["n"])
-            Lp += math.log(max(c, 1e-12)); Llo += math.log(max(lo, 1e-12)); Lhi += math.log(max(hi, 1e-12))
-        return Lp, Llo, Lhi
+            Lp += math.log(max(c, 1e-12))
+            h = 0.5 * (math.log(max(hi, 1e-12)) - math.log(max(lo, 1e-12)))
+            loose += h; sq += h * h
+        H = math.sqrt(sq) if ci_mode == "tight" else loose
+        return Lp, Lp - H, Lp + H
 
     def partial_interval(f, r, upto_gidx):
         """(L_point, L_lo, L_hi) over ONLY gaps 0..upto_gidx that have been sampled -- used for
@@ -1181,6 +1193,7 @@ def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
         "v1_use_freeze": use_freeze,
         "v1_eps_stop": eps_stop,
         "v1_min_tries": min_tries,
+        "v1_ci_mode": ci_mode,
         "adaptive_total_calls": len(acc),
         "adaptive_avg_real_tries": total_traces / len(acc) if acc else 0,
     }
