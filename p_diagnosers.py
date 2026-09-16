@@ -974,6 +974,22 @@ def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
     eps_stop = float(_os.environ.get("MG_V1_EPS", epsilon))
     min_tries = int(_os.environ.get("MG_V1_MIN", 100))
 
+    _Z = 1.96
+    _Z2 = _Z * _Z
+
+    def wilson(hits, n):
+        """Wilson score interval (center, lo, hi) for a binomial proportion. Unlike the raw Wald
+        margin 1.96*sqrt(p(1-p)/n), it stays NON-DEGENERATE at the boundaries: a 0-hit gap in n
+        tries gets hi ~ z^2/n (≈0.04 at n=100), not a false zero-width point pinned at 0. `center`
+        is a shrinkage point estimate, always strictly inside (0, 1)."""
+        if n <= 0:
+            return 1e-12, 1e-12, 1.0
+        p = hits / n
+        denom = 1.0 + _Z2 / n
+        center = (p + _Z2 / (2 * n)) / denom
+        half = (_Z / denom) * math.sqrt(p * (1.0 - p) / n + _Z2 / (4 * n * n))
+        return center, max(center - half, 0.0), min(center + half, 1.0)
+
     def gap_settled(a):
         """True if this (pair,gap) estimate needs no more traces: at the hard cap, or already
         pinned to within eps_stop (past min_tries) -- the per-estimate epsilon adaptive stop."""
@@ -981,8 +997,8 @@ def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
         if n >= max_tries_cap:
             return True
         if n >= min_tries:
-            ph = a["hits"] / n
-            if 1.96 * math.sqrt(ph * (1.0 - ph) / n) < eps_stop:
+            _, lo, hi = wilson(a["hits"], n)
+            if (hi - lo) / 2.0 < eps_stop:
                 return True
         return False
 
@@ -1023,14 +1039,13 @@ def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
             a["n"] += 1
 
     def interval_of_pair(f, r):
-        """(L_point, L_lo, L_hi) for a pair -- loose CI: sum of per-gap log endpoints."""
+        """(L_point, L_lo, L_hi) for a pair -- loose CI: sum of per-gap log endpoints, using the
+        Wilson interval so a 0-hit (or all-hit) gap is not falsely pinned with zero width."""
         Lp = Llo = Lhi = 0.0
         for g in gaps:
-            a = acc[(f, r, g["idx"])]; n = a["n"]
-            ph = a["hits"] / n if n else 1e-12
-            margin = 1.96 * math.sqrt(ph * (1.0 - ph) / n) if n else 1.0
-            plo = max(ph - margin, 1e-12); phi = min(max(ph + margin, 1e-12), 1.0)
-            Lp += math.log(max(ph, 1e-12)); Llo += math.log(plo); Lhi += math.log(max(phi, 1e-12))
+            a = acc[(f, r, g["idx"])]
+            c, lo, hi = wilson(a["hits"], a["n"])
+            Lp += math.log(max(c, 1e-12)); Llo += math.log(max(lo, 1e-12)); Lhi += math.log(max(hi, 1e-12))
         return Lp, Llo, Lhi
 
     def partial_interval(f, r, upto_gidx):
@@ -1113,13 +1128,18 @@ def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
                     continue
                 widest_gidx, widest_w = None, -1.0
                 for g in gaps:
-                    a = acc[(f, r, g["idx"])]; n = a["n"]
+                    a = acc[(f, r, g["idx"])]
                     if gap_settled(a):        # per-estimate epsilon stop: this gap needs no more
                         continue
-                    ph = a["hits"] / n if n else 1e-12
-                    margin = 1.96 * math.sqrt(ph * (1.0 - ph) / n) if n else 1.0
-                    plo = max(ph - margin, 1e-12); phi = min(max(ph + margin, 1e-12), 1.0)
-                    w = phi - plo
+                    _, lo, hi = wilson(a["hits"], a["n"])
+                    # width in LOG space -- the pair score is sum_g log p, so a gap's contribution to
+                    # the L-interval width is log(hi) - log(lo), NOT the p-space width hi - lo. These
+                    # differ sharply for small p (a low-p gap has tiny p-width but huge log-width and
+                    # dominates L's uncertainty), so refine by the log-space width. Floor both ends at
+                    # the measurement resolution ~1/n (can't distinguish p below one expected count) so
+                    # a 0-hit gap doesn't get an artificially infinite width from log(0)->log(1e-12).
+                    res = 1.0 / (a["n"] + 1)
+                    w = math.log(max(hi, res)) - math.log(max(lo, res))
                     if w > widest_w:
                         widest_w, widest_gidx = w, g["idx"]
                 if widest_gidx is not None:
