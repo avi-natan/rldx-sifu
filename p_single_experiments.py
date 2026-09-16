@@ -1436,7 +1436,7 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
 
 def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_rate=False,
                                                    fault_rate_list=(0.5, 0.8), maps_num=100,
-                                                   run_folder=None, map_start=0, map_end=None,
+                                                   run_folder=None, unit_start=0, unit_end=None,
                                                    ufr_variant=None):
     """FrozenLake WAY-2 fault-diagnosis benchmark (the only way we use; see
     experimental results/FrozenLake_v1/BENCHMARK_WAYS.md).
@@ -1481,95 +1481,94 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_r
     if _variant is not None:
         fr_token = "unknown_fr_" + _variant
 
-    NUM_MAPS = maps_num
-    # Half-open map window [map_start, map_end); clamp to what's available.
-    if map_end is None:
-        map_end = NUM_MAPS
-    map_start = max(0, map_start)
-    map_end = min(map_end, NUM_MAPS, len(loaded))
+    NUM_MAPS = min(maps_num, len(loaded))
     fault_mode_generator = FaultModelGeneratorDiscrete()
+
+    domain_name = "FrozenLake_v1"
+    ml_model_name = "PPO"                         # "PPO", "DQN"
+    render_mode = "rgb_array"                     # "human", "rgb_array"
+    max_exec_len = 200
+    debug_print = False
+    num_candidate_fault_modes = 10
+    percent_visible_states_list = [20, 40, 60, 80, 100]
+
+    # Flat work-units: ONE diagnosis each = (map index, visibility, injected fault rate). A SLURM
+    # array can then split to one diagnosis per task (full parallelism, like MiniGrid/Taxi). The
+    # expensive per-map way-2 setup (healthy rollout -> build_way2) is cached so contiguous units of
+    # the same map don't recompute it.
+    all_units = [(mi, vis, fr) for mi in range(NUM_MAPS)
+                 for vis in percent_visible_states_list for fr in fault_rate_list]
+    if unit_end is None:
+        unit_end = len(all_units)
+    unit_start = max(0, unit_start); unit_end = min(unit_end, len(all_units))
+    my_units = all_units[unit_start:unit_end]
+    _map_cache = {}
 
     msg = (
         f"Running FrozenLake PO diagnosis (way2, {fr_token}) | "
-        f"epsilon={epsilon} | "
-        f"injected_fault_rate={fault_rate_list} | "
-        f"fault_rate_candidates={fault_rate_candidates} | "
-        f"num_maps={NUM_MAPS} | "
-        f"map_window=[{map_start},{map_end})"
+        f"epsilon={epsilon} | injected_fault_rate={fault_rate_list} | "
+        f"fault_rate_candidates={fault_rate_candidates} | num_maps={NUM_MAPS} | "
+        f"unit_window=[{unit_start},{unit_end}) of {len(all_units)}"
     )
     print(msg + "\n\n")
 
-    for i in range(map_start, map_end):
+    for (i, percent_visible_states, fault_rate) in my_units:
 
-        map_desc, hardcoded_policy = loaded[i]
+        if i not in _map_cache:
+            map_desc, hardcoded_policy = loaded[i]
+            instance_seed = 10 + i
+            # the healthy rollout below reads these globals too -> set them BEFORE execute()
+            DOMAIN_KWARGS["FrozenLake_v1"]["desc"] = map_desc
+            DOMAIN_KWARGS["FrozenLake_v1"]["is_slippery"] = True
+            h_rl_models.HARD_CODED_POLICY = hardcoded_policy
+            # way 2: profile the healthy policy at the instance seed -> command counts -> a* + candidates.
+            healthy_trajectory, _ = execute(domain_name, False, "[0,1,2,3]", instance_seed * SEED_BLOCK, 0.0,
+                                            render_mode, ml_model_name, fault_mode_generator, max_exec_len, fault_seed_offset=0)
+            counts = Counter(int(a) for a in healthy_trajectory[1::2])
+            a_star, e_target, execution_fault_mode_name, possible_fault_mode_names = build_way2(counts, seed=instance_seed)
+            _map_cache[i] = (map_desc, hardcoded_policy, instance_seed, a_star,
+                             execution_fault_mode_name, possible_fault_mode_names)
+
+        (map_desc, hardcoded_policy, instance_seed, a_star,
+         execution_fault_mode_name, possible_fault_mode_names) = _map_cache[i]
+        # set the globals the diagnoser reads for THIS map
         DOMAIN_KWARGS["FrozenLake_v1"]["desc"] = map_desc
         DOMAIN_KWARGS["FrozenLake_v1"]["is_slippery"] = True
         h_rl_models.HARD_CODED_POLICY = hardcoded_policy
-        now = datetime.now()
-        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
-        print(f'================================= {dt_string}: MAP {i+1}/{NUM_MAPS} START =================================')
 
-        domain_name = "FrozenLake_v1"
-        ml_model_name = "PPO"                         # "PPO", "DQN"
-        render_mode = "rgb_array"                     # "human", "rgb_array"
-        max_exec_len = 200
-        debug_print = False
+        print(f'======= MAP {i+1}/{NUM_MAPS} FR={fault_rate} VR={percent_visible_states} START =======')
+        output = run_NON_DETERMINSTIC_single_experiment_PO( domain_name=domain_name,
+                                                         ml_model_name=ml_model_name,
+                                                         render_mode=render_mode,
+                                                         max_exec_len=max_exec_len,
+                                                         debug_print=debug_print,
+                                                         execution_fault_mode_name=execution_fault_mode_name,
+                                                         instance_seed=instance_seed * SEED_BLOCK,  # block base; run_PO derives offsets
+                                                         fault_probability=fault_rate,
+                                                         percent_visible_states=percent_visible_states,
+                                                         possible_fault_mode_names=possible_fault_mode_names,
+                                                         num_candidate_fault_modes=num_candidate_fault_modes,
+                                                         epsilon = epsilon,
+                                                         unknown_fault_rate=unknown_fault_rate,
+                                                         fault_rate_candidates=fault_rate_candidates,
+                                                         fixed_candidate_fault_modes=possible_fault_mode_names,
+                                                         use_racing=(_variant == "racing"),
+                                                         ufr_variant=(_variant if _variant in ("v1", "v1_freeze", "v2") else None))
+        if not output:
+            skipped += 1
+            continue
 
-        instance_seed = 10+i
-        num_candidate_fault_modes = 10
-
-        # execution fault + 10 distinguishable candidate fault modes come from way 2:
-        # profile the healthy policy at the instance seed -> command counts -> a* + candidates.
-        healthy_trajectory, _ = execute(domain_name, False, "[0,1,2,3]", instance_seed * SEED_BLOCK, 0.0,
-                                        render_mode, ml_model_name, fault_mode_generator, max_exec_len, fault_seed_offset=0)
-        counts = Counter(int(a) for a in healthy_trajectory[1::2])
-        a_star, e_target, execution_fault_mode_name, possible_fault_mode_names = build_way2(counts, seed=instance_seed)
-
-        percent_visible_states_list = [20, 40, 60, 80, 100]
-
-        for percent_visible_states in percent_visible_states_list:
-            for fault_rate in fault_rate_list:
-
-                print(f'======================= START SINGLE EXPERIMENT MAP {i + 1}/{NUM_MAPS} with FR={fault_rate}, VR={percent_visible_states} =======================')
-
-                output = run_NON_DETERMINSTIC_single_experiment_PO( domain_name=domain_name,
-                                                                 ml_model_name=ml_model_name,
-                                                                 render_mode=render_mode,
-                                                                 max_exec_len=max_exec_len,
-                                                                 debug_print=debug_print,
-                                                                 execution_fault_mode_name=execution_fault_mode_name,
-                                                                 instance_seed=instance_seed * SEED_BLOCK,  # pass the block base; run_PO derives all offsets
-                                                                 fault_probability=fault_rate,
-                                                                 percent_visible_states=percent_visible_states,
-                                                                 possible_fault_mode_names=possible_fault_mode_names,
-                                                                 num_candidate_fault_modes=num_candidate_fault_modes,
-                                                                 epsilon = epsilon,
-                                                                 unknown_fault_rate=unknown_fault_rate,
-                                                                 fault_rate_candidates=fault_rate_candidates,
-                                                                 fixed_candidate_fault_modes=possible_fault_mode_names,
-                                                                 use_racing=(_variant == "racing"),
-                                                                 ufr_variant=(_variant if _variant in ("v1", "v1_freeze", "v2") else None))
-                if not output:
-                    skipped += 1
-                    continue
-
-                output["epsilon"] = epsilon
-                output["experiment_num"] = i + 1
-                output["real_fault_prob"] = fault_rate
-                output["map_desc"] = map_desc
-                output["hardcoded_policy"] = f"{domain_name}_{ml_model_name}"
-                output["domain_name"] = domain_name
-                output["benchmark_way"] = "way2"
-                output["a_star"] = a_star
-                output["execution_fault"] = execution_fault_mode_name
-
-                records.append(output)
-
-
-                print(f'=========================== END SINGLE EXPERIMENT MAP {i + 1}/{NUM_MAPS} with FR={fault_rate}, VR{percent_visible_states} ===========================')
-
-        dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        print(f'======================================= {dt_string}: MAP {i+1}/{NUM_MAPS} END =======================================')
+        output["epsilon"] = epsilon
+        output["experiment_num"] = i + 1
+        output["real_fault_prob"] = fault_rate
+        output["map_desc"] = map_desc
+        output["hardcoded_policy"] = f"{domain_name}_{ml_model_name}"
+        output["domain_name"] = domain_name
+        output["benchmark_way"] = "way2"
+        output["a_star"] = a_star
+        output["execution_fault"] = execution_fault_mode_name
+        records.append(output)
+        print(f'======= MAP {i+1}/{NUM_MAPS} FR={fault_rate} VR={percent_visible_states} END =======')
 
     if not records:
         print("No successful FrozenLake experiments produced (all trajectories failed).")
@@ -1606,9 +1605,9 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_r
     # never overwrite each other. [0.5, 0.8] -> "0_5-0_8"; [0.3] -> "0_3".
     injfr_token = "-".join(str(fr).replace(".", "_") for fr in fault_rate_list)
 
-    # Map window in the filename so job-array groups never overwrite each other.
+    # Unit window in the filename so job-array groups never overwrite each other.
     file_path = (f"frozenlake_way2_PO_{fr_token}_epsilon_{file_suffix}"
-                 f"_INJFR_{injfr_token}_MAPS_{map_start}-{map_end}")
+                 f"_INJFR_{injfr_token}_UNITS_{unit_start}-{unit_end}")
 
     _results_root = "ufr_experiments" if _variant is not None else "experimental results"
     output_dir = domain_results_dir("FrozenLake_v1", run_folder, results_root=_results_root)

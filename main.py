@@ -244,16 +244,18 @@ if __name__ == '__main__':
         # (default)      -> Taxi-v4 hard class-2 experiment
         if args.frozenlake:
             FL_MAPS_NUM = 100
-            # --fl_group present -> run only this task's slice of the 100 maps (job-array split).
-            map_start, map_end = 0, None
+            # Work-units = maps x 5 visibilities x injected fault rates. --fl_group splits these units
+            # (not just maps) so a job array can run ONE diagnosis per task (full parallelism).
+            FL_TOTAL_UNITS = FL_MAPS_NUM * 5 * len(args.fl_fault_rates)
+            fl_unit_start, fl_unit_end = 0, None
             if args.fl_group is not None:
-                group_size = FL_MAPS_NUM // args.fl_num_groups
-                map_start = args.fl_group * group_size
+                gsize = FL_TOTAL_UNITS // args.fl_num_groups
+                fl_unit_start = args.fl_group * gsize
                 # last group absorbs any remainder from an uneven split
-                map_end = (map_start + group_size
-                           if args.fl_group < args.fl_num_groups - 1 else FL_MAPS_NUM)
+                fl_unit_end = (fl_unit_start + gsize
+                               if args.fl_group < args.fl_num_groups - 1 else FL_TOTAL_UNITS)
                 print(f"FrozenLake group {args.fl_group}/{args.fl_num_groups} "
-                      f"-> maps [{map_start}, {map_end})")
+                      f"-> units [{fl_unit_start}, {fl_unit_end}) of {FL_TOTAL_UNITS}")
             _fl_variant = None if args.mg_method == "full" else args.mg_method
             multiple_experiment_FrozenLake_fault_benchmark(
                 epsilon=args.epsilon,
@@ -261,8 +263,8 @@ if __name__ == '__main__':
                 fault_rate_list=args.fl_fault_rates,
                 maps_num=FL_MAPS_NUM,
                 run_folder=args.run_folder,
-                map_start=map_start,
-                map_end=map_end,
+                unit_start=fl_unit_start,
+                unit_end=fl_unit_end,
                 ufr_variant=_fl_variant,
             )
         elif args.minigrid:

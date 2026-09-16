@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition main
 #SBATCH --job-name taxi_ufr
-#SBATCH --array 0-99
+#SBATCH --array 0-499
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
@@ -26,5 +26,5 @@ RF="taxi_${MG_METHOD}_eps004${MG_OUT_SUFFIX:-}"
 mkdir -p ufr_experiments/Taxi_v4/${RF}/logs
 
 python main.py --mg_method ${MG_METHOD} --epsilon 0.04 \
-    --mg_group ${SLURM_ARRAY_TASK_ID} --mg_num_groups 100 \
+    --mg_group ${SLURM_ARRAY_TASK_ID} --mg_num_groups 500 \
     -o ${RF}
