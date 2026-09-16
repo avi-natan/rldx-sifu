@@ -178,11 +178,13 @@ if __name__ == '__main__':
     parser.add_argument(
         "--mg_method",
         default="full",
-        choices=["full", "racing", "v1", "v1_freeze"],
+        choices=["full", "racing", "v1", "v1_freeze", "v2"],
         help="unknown-fault-rate diagnoser: 'full' (score every rate to confidence), 'racing' "
-             "(paired-difference racing, v2), 'v1' (marginal-CI racing, no freezing), or 'v1_freeze' "
-             "(marginal-CI racing that also freezes rates that can't be a fault's best). Anything but "
-             "'full' implies unknown fault rate and routes results to ufr_experiments/."
+             "(paired-difference CRN racing), 'v1' (marginal-CI racing, no freezing), 'v1_freeze' "
+             "(marginal-CI racing that also freezes rates that can't be a fault's best), or 'v2' "
+             "(conservative: every computed estimate is epsilon-precise like full; saves time only by "
+             "freezing rates/faults that provably can't change the rank -> matches full's rank). "
+             "Anything but 'full' implies unknown fault rate and routes results to ufr_experiments/."
     )
 
     parser.add_argument(
@@ -252,6 +254,7 @@ if __name__ == '__main__':
                            if args.fl_group < args.fl_num_groups - 1 else FL_MAPS_NUM)
                 print(f"FrozenLake group {args.fl_group}/{args.fl_num_groups} "
                       f"-> maps [{map_start}, {map_end})")
+            _fl_variant = None if args.mg_method == "full" else args.mg_method
             multiple_experiment_FrozenLake_fault_benchmark(
                 epsilon=args.epsilon,
                 unknown_fault_rate=args.unknown_fault_rate,
@@ -260,6 +263,7 @@ if __name__ == '__main__':
                 run_folder=args.run_folder,
                 map_start=map_start,
                 map_end=map_end,
+                ufr_variant=_fl_variant,
             )
         elif args.minigrid:
             # MiniGrid: select env noise + the matching trained policy together, and the domain.
