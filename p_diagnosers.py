@@ -1212,27 +1212,32 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_V1_FREEZE(
 
 def _v2_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name, observations,
             candidate_fault_modes, fault_rate_candidates, epsilon,
-            min_tries=100, max_tries=2000, batch_size=50):
+            init_batch=50, min_tries=100, max_tries=2000, batch_size=50):
     """v2 unknown-fault-rate diagnoser -- the CONSERVATIVE "match brute-force, save time when safe"
     design.
 
-    Goal: same fault rank as the full (brute-force) ufr diagnoser, only faster where it is provably
-    safe. Every (fault, rate, gap) estimate that we DO compute is driven to full's precision with the
-    SAME adaptive Monte-Carlo (per-estimate stop at margin < epsilon; Wald interval). We save time by
-    NOT computing estimates that provably cannot change the ranking:
-      * process the trajectory's gaps one at a time (natural order);
-      * FREEZE RATES inside a fault (v1 rule): once a rate's interval sits below another live rate's
-        low end it cannot be that fault's best -> stop sampling it on the remaining gaps;
-      * FREEZE FAULTS: rank faults by their (max-over-rates) score; a fault confidently separated from
-        both neighbours has a fixed rank -> stop sampling it on the remaining gaps.
-    The pair score L = sum_gaps log p_hat, with a LOOSE CI (sum of per-gap log endpoints).
+    Goal: same fault rank as the full (brute-force) ufr diagnoser, only faster where it is safe.
 
-    Because each computed estimate is epsilon-precise (unlike v1's cheap fixed batches), the partial
-    intervals are tight enough for freezing to actually fire, so the ranking tracks full's while the
-    frozen work is skipped. (Caveat: freezing on PARTIAL gaps can differ from full if a late gap would
-    have reversed an early decision; we measure against full to confirm it stays negligible.)"""
+    Key structure (fixes the earlier incomparable-partial-sums bug):
+      0. INIT every (fault, rate, gap) with a small batch (init_batch). Now EVERY pair has an estimate
+         for EVERY gap, so pair scores L = sum_gaps log p_hat are always summed over the SAME full gap
+         set and are directly comparable. (Comparing sums over different gap subsets is what broke the
+         first version: fewer gaps -> higher L -> less-sampled pairs spuriously won.)
+      1. REFINE only the CONTENDED pairs toward epsilon (brute-force adaptive rule: keep sampling a
+         gap until its Wald margin 1.96*sqrt(p(1-p)/n) < epsilon, capped at max_tries). Freezing gates
+         which pairs get refined; it never removes a gap:
+           * FREEZE RATES (v1 rule): a rate whose interval sits below another live rate's low end can't
+             be its fault's best -> stop refining it (stays at init precision).
+           * DECIDE FAULTS: a fault confidently separated from both neighbours has a fixed rank ->
+             stop refining it (stays at current precision).
+      2. RANK by each fault's best-rate score over all gaps.
+
+    Time is saved because dominated rates and decided faults stay at the cheap init precision while the
+    contenders (incl. the true fault) are driven to full's epsilon precision -> the ranking tracks full
+    where it matters, and the coarse tail is where the savings come from."""
     import os as _os
     epsilon = float(_os.environ.get("MG_V2_EPS", epsilon))
+    init_batch = int(_os.environ.get("MG_V2_INIT", init_batch))
     min_tries = int(_os.environ.get("MG_V2_MIN", min_tries))
     max_tries = int(_os.environ.get("MG_V2_MAX", max_tries))
     batch_size = int(_os.environ.get("MG_V2_BATCH", batch_size))
@@ -1257,69 +1262,85 @@ def _v2_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
                      "length": i - last, "seed": diagnosis_seed + last})
         last = i
 
-    est = {}                 # (f, r, gidx) -> {"p","plo","phi","tries"}  (epsilon-precise, once)
-    frozen_rates = set()     # (f, r) rates proven not to be their fault's best
-    decided_faults = set()   # faults whose rank is fixed -> stop sampling their remaining gaps
+    acc = {(f, r, g["idx"]): {"hits": 0, "n": 0} for f in faults for r in rates for g in gaps}
+    frozen_rates = set()      # (f, r) rates proven not to be their fault's best -> stop refining
+    decided_faults = set()    # faults whose rank is fixed -> stop refining
 
-    def estimate(f, r, gidx):
-        g = gaps[gidx]
-        res = simulate_m_traces_adaptive_monte_carlo(
-            g["start"], g["end"], g["length"], candidate_fault_modes[f], r,
-            domain_name, g["seed"], simulator, policy, comparator, debug_print,
-            min_tries=min_tries, max_tries=max_tries, batch_size=batch_size, epsilon=epsilon)
-        p = res["p_hat"]
-        m = res["margin"] if res["margin"] is not None else 1.0
-        plo = max(p - m, 1e-12); phi = min(max(p + m, 1e-12), 1.0)
-        est[(f, r, gidx)] = {"p": p, "plo": plo, "phi": phi, "tries": res["num_of_tries"]}
+    def sample(f, r, gidx, k):
+        a = acc[(f, r, gidx)]; g = gaps[gidx]; fm = candidate_fault_modes[f]
+        base = g["seed"]; rng = random.Random()
+        for i in range(a["n"], a["n"] + k):
+            s = base + i * MAX_STATES
+            rng.seed(s)
+            nxt = execute_one_trace(g["start"], g["length"], fm, r, domain_name, s, rng,
+                                    simulator, policy, False)
+            if comparator(nxt, g["end"]):
+                a["hits"] += 1
+            a["n"] += 1
 
-    def pair_interval(f, r, upto):
-        """(L_point, L_lo, L_hi) -- loose CI (sum of per-gap log endpoints) over gaps 0..upto that
-        have actually been estimated for this pair."""
+    def gap_ci(a):
+        """Wald p_hat + interval (the brute-force computation): (p, p_lo, p_hi)."""
+        n = a["n"]
+        p = a["hits"] / n if n else 1e-12
+        m = 1.96 * math.sqrt(p * (1.0 - p) / n) if n else 1.0
+        return p, max(p - m, 1e-12), min(max(p + m, 1e-12), 1.0)
+
+    def gap_settled(a):
+        """Per-estimate epsilon stop (brute-force rule): Wald margin < epsilon (past min_tries), or at
+        the max_tries cap."""
+        n = a["n"]
+        if n >= max_tries:
+            return True
+        if n >= min_tries:
+            p = a["hits"] / n
+            if 1.96 * math.sqrt(p * (1.0 - p) / n) < epsilon:
+                return True
+        return False
+
+    def pair_interval(f, r):
+        """(L_point, L_lo, L_hi) -- loose CI (sum of per-gap Wald log endpoints) over ALL gaps. Every
+        pair has an estimate for every gap, so pair scores are summed over the SAME gap set and are
+        directly comparable."""
         Lp = Llo = Lhi = 0.0
-        for gi in range(upto + 1):
-            e = est.get((f, r, gi))
-            if e is None:
-                continue
-            Lp += math.log(max(e["p"], 1e-12)); Llo += math.log(e["plo"]); Lhi += math.log(max(e["phi"], 1e-12))
+        for g in gaps:
+            p, plo, phi = gap_ci(acc[(f, r, g["idx"])])
+            Lp += math.log(max(p, 1e-12)); Llo += math.log(plo); Lhi += math.log(max(phi, 1e-12))
         return Lp, Llo, Lhi
 
-    def fault_score(f, upto):
-        """Fault score = max over live rates (same rule as v1's fault_score): point from the best
-        rate, low/high are the max over live rates' low/high ends."""
+    def fault_score(f):
         live = [r for r in rates if (f, r) not in frozen_rates] or rates
-        ivs = {r: pair_interval(f, r, upto) for r in live}
+        ivs = {r: pair_interval(f, r) for r in live}
         best_r = max(live, key=lambda r: ivs[r][0])
         Lp = ivs[best_r][0]
         Llo = max(ivs[r][1] for r in live)
         Lhi = max(ivs[r][2] for r in live)
         return Lp, Llo, Lhi, best_r
 
-    stop_reason = "all_gaps"
-    for gi in range(len(gaps)):
-        # (1) estimate this gap (to epsilon) for every LIVE pair: skip frozen rates and decided faults
-        for f in faults:
-            if f in decided_faults:
-                continue
-            for r in rates:
-                if (f, r) in frozen_rates:
-                    continue
-                estimate(f, r, gi)
+    # ----- 0. INIT: seed every (pair, gap) so all pair scores are summed over the SAME full gap set
+    for f in faults:
+        for r in rates:
+            for g in gaps:
+                sample(f, r, g["idx"], init_batch)
 
-        # (2) FREEZE RATES inside each still-active fault (v1 rule, on the gaps seen so far)
+    # ----- 1. REFINE contended pairs toward epsilon; freezing/deciding only GATE refinement -----
+    num_rounds = 0
+    stop_reason = "settled"
+    while True:
+        # (a) freeze rates that can't be their fault's best (v1 rule, on full-gap intervals)
         for f in faults:
             if f in decided_faults:
                 continue
             live = [r for r in rates if (f, r) not in frozen_rates]
             if len(live) <= 1:
                 continue
-            ivs = {r: pair_interval(f, r, gi) for r in live}
+            ivs = {r: pair_interval(f, r) for r in live}
             best_low = max(ivs[r][1] for r in live)
             for r in live:
                 if ivs[r][2] < best_low:
                     frozen_rates.add((f, r))
 
-        # (3) FREEZE FAULTS whose rank is now fixed (confidently separated from both neighbours)
-        sc = {f: fault_score(f, gi) for f in faults}
+        # (b) decide faults whose rank is fixed (confidently separated from both neighbours)
+        sc = {f: fault_score(f) for f in faults}
         order = sorted(faults, key=lambda f: sc[f][0], reverse=True)
         undecided = set()
         for k in range(len(order) - 1):
@@ -1330,12 +1351,26 @@ def _v2_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
             if f not in undecided:
                 decided_faults.add(f)
 
-        if len(decided_faults) == len(faults):
+        if not undecided:
             stop_reason = "decided"; break
 
-    # ----- build output (same schema family as the other ufr diagnosers) -----
-    last_gi = len(gaps) - 1
-    log_prob_total_per_fault_and_rate = {f: {r: pair_interval(f, r, last_gi)[0] for r in rates} for f in faults}
+        # (c) refine: push undecided faults' live rates' unsettled gaps toward epsilon
+        did_sample = False
+        for f in undecided:
+            for r in rates:
+                if (f, r) in frozen_rates:
+                    continue
+                for g in gaps:
+                    a = acc[(f, r, g["idx"])]
+                    if gap_settled(a):
+                        continue
+                    sample(f, r, g["idx"], batch_size); did_sample = True
+        if not did_sample:
+            stop_reason = "settled"; break
+        num_rounds += 1
+
+    # ----- 2. build output (same schema family as the other ufr diagnosers) -----
+    log_prob_total_per_fault_and_rate = {f: {r: pair_interval(f, r)[0] for r in rates} for f in faults}
     best_rate_per_fault = {}; best_logL_per_fault = {}
     for f in faults:
         br = max(rates, key=lambda r: log_prob_total_per_fault_and_rate[f][r])
@@ -1343,7 +1378,7 @@ def _v2_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
         best_logL_per_fault[f] = log_prob_total_per_fault_and_rate[f][br]
     sorted_faults = sorted(best_logL_per_fault.items(), key=lambda x: x[1], reverse=True)
     T = max(len(gaps), 1)
-    total_traces = sum(e["tries"] for e in est.values())
+    total_traces = sum(a["n"] for a in acc.values())
 
     output = {
         "diagnosis_time_sec": time.time() - t0,
@@ -1359,17 +1394,17 @@ def _v2_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name,
         "observations_len": len(observations),
         "extra_output": "",
         "v2_total_traces": total_traces,
-        "v2_estimates_computed": len(est),
-        "v2_estimates_full_grid": len(faults) * len(rates) * len(gaps),
+        "v2_num_rounds": num_rounds,
+        "v2_init_batch": init_batch,
         "v2_frozen_rate_pairs": len(frozen_rates),
         "v2_decided_faults": len(decided_faults),
         "v2_stop_reason": stop_reason,
         "v2_epsilon": epsilon,
-        "adaptive_total_calls": len(est),
-        "adaptive_avg_real_tries": total_traces / len(est) if est else 0,
+        "adaptive_total_calls": len(acc),
+        "adaptive_avg_real_tries": total_traces / len(acc) if acc else 0,
     }
-    print(f"\n===== V2 done: stop={stop_reason} estimates={len(est)}/{len(faults)*len(rates)*len(gaps)} "
-          f"traces={total_traces} frozen_rates={len(frozen_rates)} decided_faults={len(decided_faults)} =====")
+    print(f"\n===== V2 done: stop={stop_reason} rounds={num_rounds} traces={total_traces} "
+          f"frozen_rates={len(frozen_rates)}/{len(faults)*len(rates)} decided_faults={len(decided_faults)}/{len(faults)} =====")
     return output
 
 
