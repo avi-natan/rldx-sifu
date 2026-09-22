@@ -1391,7 +1391,7 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
                     fault_rate_candidates=fault_rate_candidates,
                     fixed_candidate_fault_modes=candidate_fault_modes,
                     use_racing=(_variant == "racing"),
-                    ufr_variant=(_variant if _variant in ("v1", "v1_freeze", "v2") else None))
+                    ufr_variant=(_variant if _variant in ("v1", "v1_freeze", "v2", "v2b") else None))
 
                 if not output:
                     skipped += 1
@@ -1554,7 +1554,7 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_r
                                                          fault_rate_candidates=fault_rate_candidates,
                                                          fixed_candidate_fault_modes=possible_fault_mode_names,
                                                          use_racing=(_variant == "racing"),
-                                                         ufr_variant=(_variant if _variant in ("v1", "v1_freeze", "v2") else None))
+                                                         ufr_variant=(_variant if _variant in ("v1", "v1_freeze", "v2", "v2b") else None))
         if not output:
             skipped += 1
             continue
@@ -1777,7 +1777,7 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
             fault_rate_candidates=fault_rate_candidates,
             fixed_candidate_fault_modes=candidate_specs,
             use_racing=(_variant == "racing"),
-            ufr_variant=(_variant if _variant in ("v1", "v1_freeze", "v2") else None),
+            ufr_variant=(_variant if _variant in ("v1", "v1_freeze", "v2", "v2b") else None),
         )
         if not output:
             skipped += 1

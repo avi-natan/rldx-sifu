@@ -1504,6 +1504,250 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_V2(
                    candidate_fault_modes, fault_rate_candidates, epsilon)
 
 
+def _v2b_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name, observations,
+             candidate_fault_modes, fault_rate_candidates, epsilon,
+             budget_N=100, init_batch=30, batch_size=20):
+    """v2b -- the SIMS-STUDY variant: "same total simulation budget as brute-force fixed-N, spend it
+    smarter."
+
+    The comparison axis is TOTAL simulations. Brute-force fixed-N spends exactly N sims on EVERY
+    (fault, rate, gap) estimate -> B = N * pairs * gaps. v2b is given the SAME budget B and tries to
+    reach a better real-fault rank by allocating those sims non-uniformly:
+
+      0. INIT every (fault, rate, gap) with a small uniform batch (init_batch, default 30 -- respects
+         the ~20-30 floor CI theory needs). This equalises gap counts (every pair scores L over the
+         SAME gaps -> comparable) and gives a first rough CI.
+      1. Spend the REMAINING budget R = B - init_batch*pairs*gaps in rounds. Each round gives a batch
+         to the WIDEST-Wilson-CI gap (in log-space) of every still-CONTENDED pair, so sims flow to the
+         estimates that most limit the ranking. Between rounds:
+           * FREEZE RATES: a rate whose L interval sits below another live rate's low end can't be its
+             fault's best -> stop refining it (frees its budget for contenders).
+           * DECIDE FAULTS: a fault confidently separated from both ranking neighbours is fixed ->
+             stop refining it.
+         Stop when the budget B is exhausted (spend it all, like brute force) OR the ranking is fully
+         settled early (then v2b lands at FEWER sims than brute-force-N -- an even stronger result).
+      2. RANK by each fault's best-rate JEFFREYS score over all gaps -- the SAME point estimator as
+         brute-force fixed-N, so the only thing that differs between v2b and brute force is the
+         ALLOCATION, never the scoring. That is what makes the rank-vs-total-sims comparison fair.
+
+    Two estimator roles, deliberately separate:
+      * RANKING score  -> Jeffreys point p=(hits+0.5)/(n+1)   (matches brute force; boundary-safe).
+      * PRUNING interval (freeze/decide/widest-gap) -> Wilson score interval (boundary-safe; a 0-hit
+        does NOT collapse to a false-certain 0 the way Wald does).
+    No Wald anywhere, no 1e-12 floor in the ranking."""
+    import os as _os
+    budget_N = int(_os.environ.get("MG_V2B_N", budget_N))
+    init_batch = int(_os.environ.get("MG_V2B_INIT", init_batch))
+    batch_size = int(_os.environ.get("MG_V2B_BATCH", batch_size))
+    ci_mode = _os.environ.get("MG_V2B_CI", "tight")
+    gap_order_mode = _os.environ.get("MG_V2B_GAPORDER", "spread")
+    use_jeffreys = _os.environ.get("MG_V2B_JEFFREYS", "1") == "1"
+
+    diagnosis_seed = instance_seed + SIMULATION_OFFSET
+    policy = load_trained_model(domain_name, ml_model_name)
+    simulator = make_wrapped_env(domain_name, render_mode)
+    initial_obs, _ = simulator.reset(seed=instance_seed)
+    assert comparators[domain_name](observations[0], initial_obs)
+    comparator = comparators[domain_name]
+    t0 = time.time()
+
+    faults = list(candidate_fault_modes.keys())
+    rates = list(fault_rate_candidates)
+
+    gaps = []
+    last = 0
+    for i in range(1, len(observations)):
+        if observations[i] is None:
+            continue
+        gaps.append({"idx": len(gaps), "start": observations[last], "end": observations[i],
+                     "length": i - last, "seed": diagnosis_seed + last})
+        last = i
+
+    n_pairs = len(faults) * len(rates)
+    n_gaps = max(len(gaps), 1)
+    total_budget = budget_N * n_pairs * len(gaps)   # match brute-force fixed-N total sims
+
+    acc = {(f, r, g["idx"]): {"hits": 0, "n": 0} for f in faults for r in rates for g in gaps}
+    frozen_rates = set()
+    decided_faults = set()
+
+    def sample(f, r, gidx, k):
+        a = acc[(f, r, gidx)]; g = gaps[gidx]; fm = candidate_fault_modes[f]
+        base = g["seed"]; rng = random.Random()
+        for i in range(a["n"], a["n"] + k):
+            s = base + i * MAX_STATES
+            rng.seed(s)
+            nxt = execute_one_trace(g["start"], g["length"], fm, r, domain_name, s, rng,
+                                    simulator, policy, False)
+            if comparator(nxt, g["end"]):
+                a["hits"] += 1
+            a["n"] += 1
+
+    def point(a):
+        """RANKING point estimate: Jeffreys (hits+0.5)/(n+1), else Wald with a 1e-12 floor."""
+        n = a["n"]
+        if n == 0:
+            return 1e-12
+        if use_jeffreys:
+            return (a["hits"] + 0.5) / (n + 1.0)
+        return max(a["hits"] / n, 1e-12)
+
+    def wilson(a):
+        """PRUNING interval: 95% Wilson score interval (p_lo, p_hi), boundary-safe."""
+        n = a["n"]
+        if n == 0:
+            return 1e-12, 1.0
+        z = 1.96
+        phat = a["hits"] / n
+        denom = 1.0 + z * z / n
+        center = (phat + z * z / (2.0 * n)) / denom
+        half = (z / denom) * math.sqrt(phat * (1.0 - phat) / n + z * z / (4.0 * n * n))
+        return max(center - half, 1e-12), min(center + half, 1.0)
+
+    def gap_logwidth(a):
+        lo, hi = wilson(a)
+        return math.log(max(hi, 1e-12)) - math.log(max(lo, 1e-12))
+
+    def pair_interval(f, r):
+        """(L_point, L_lo, L_hi) over ALL gaps. L_point uses the Jeffreys point; the half-width uses
+        the Wilson interval, TIGHT (quadrature) by default or LOOSE (sum) under MG_V2B_CI=loose."""
+        Lp = 0.0; loose = 0.0; sq = 0.0
+        for g in gaps:
+            a = acc[(f, r, g["idx"])]
+            Lp += math.log(max(point(a), 1e-12))
+            lo, hi = wilson(a)
+            h = 0.5 * (math.log(max(hi, 1e-12)) - math.log(max(lo, 1e-12)))
+            loose += h; sq += h * h
+        H = math.sqrt(sq) if ci_mode == "tight" else loose
+        return Lp, Lp - H, Lp + H
+
+    def fault_score(f):
+        live = [r for r in rates if (f, r) not in frozen_rates] or rates
+        ivs = {r: pair_interval(f, r) for r in live}
+        best_r = max(live, key=lambda r: ivs[r][0])
+        Lp = ivs[best_r][0]
+        Llo = max(ivs[r][1] for r in live)
+        Lhi = max(ivs[r][2] for r in live)
+        return Lp, Llo, Lhi, best_r
+
+    def refreeze_decide():
+        """Freeze dominated rates; decide faults whose rank is fixed. Returns the undecided fault set."""
+        for f in faults:
+            if f in decided_faults:
+                continue
+            live = [r for r in rates if (f, r) not in frozen_rates]
+            if len(live) <= 1:
+                continue
+            ivs = {r: pair_interval(f, r) for r in live}
+            best_low = max(ivs[r][1] for r in live)
+            for r in live:
+                if ivs[r][2] < best_low:
+                    frozen_rates.add((f, r))
+        sc = {f: fault_score(f) for f in faults}
+        order = sorted(faults, key=lambda f: sc[f][0], reverse=True)
+        undec = set()
+        for k in range(len(order) - 1):
+            A, B = order[k], order[k + 1]
+            if not (sc[A][1] > sc[B][2]):
+                undec.add(A); undec.add(B)
+        for f in faults:
+            if f not in undec:
+                decided_faults.add(f)
+        return undec
+
+    # ----- 0. INIT (uniform), capped by the budget in the degenerate case -----
+    for f in faults:
+        for r in rates:
+            for g in gaps:
+                sample(f, r, g["idx"], min(init_batch, budget_N))
+    spent = sum(a["n"] for a in acc.values())
+
+    # ----- 1. spend the remaining budget on the widest-CI gap of each contended pair -----
+    num_rounds = 0
+    stop_reason = "budget"
+    undecided = refreeze_decide()
+    while spent < total_budget and undecided:
+        did = False
+        for f in list(undecided):
+            if f in decided_faults:
+                continue
+            for r in rates:
+                if (f, r) in frozen_rates:
+                    continue
+                # widest-Wilson-CI gap for this pair (log-space)
+                gidx = max((g["idx"] for g in gaps),
+                           key=lambda gi: gap_logwidth(acc[(f, r, gi)]))
+                k = min(batch_size, total_budget - spent)
+                if k <= 0:
+                    break
+                sample(f, r, gidx, k); spent += k; did = True
+                if spent >= total_budget:
+                    break
+            if spent >= total_budget:
+                break
+        num_rounds += 1
+        undecided = refreeze_decide()
+        if not did:
+            stop_reason = "no_live_pairs"; break
+    if not undecided and stop_reason == "budget":
+        stop_reason = "settled"
+
+    # ----- 2. rank by best-rate Jeffreys score over all gaps -----
+    log_prob_total_per_fault_and_rate = {f: {r: pair_interval(f, r)[0] for r in rates} for f in faults}
+    best_rate_per_fault = {}; best_logL_per_fault = {}
+    for f in faults:
+        br = max(rates, key=lambda r: log_prob_total_per_fault_and_rate[f][r])
+        best_rate_per_fault[f] = br
+        best_logL_per_fault[f] = log_prob_total_per_fault_and_rate[f][br]
+    sorted_faults = sorted(best_logL_per_fault.items(), key=lambda x: x[1], reverse=True)
+    T = max(len(gaps), 1)
+    total_traces = sum(a["n"] for a in acc.values())
+
+    output = {
+        "diagnosis_time_sec": time.time() - t0,
+        "diagnosis_time_ms": (time.time() - t0) * 1000,
+        "avg_gap_time": 0.0,
+        "num_gaps": len(gaps),
+        "sorted_faults": sorted_faults,
+        "sorted_faults_with_exp_val": [(f, math.exp(L / T)) for f, L in sorted_faults],
+        "best_rate_per_fault": best_rate_per_fault,
+        "log_prob_total_per_fault_and_rate": log_prob_total_per_fault_and_rate,
+        "fault_rate_candidates": fault_rate_candidates,
+        "observations": observations,
+        "observations_len": len(observations),
+        "extra_output": "",
+        "total_simulations": total_traces,
+        "v2b_total_traces": total_traces,
+        "v2b_total_budget": total_budget,
+        "v2b_budget_N": budget_N,
+        "v2b_init_batch": init_batch,
+        "v2b_batch_size": batch_size,
+        "v2b_num_rounds": num_rounds,
+        "v2b_frozen_rate_pairs": len(frozen_rates),
+        "v2b_decided_faults": len(decided_faults),
+        "v2b_stop_reason": stop_reason,
+        "v2b_jeffreys": use_jeffreys,
+        "v2b_ci_mode": ci_mode,
+        "adaptive_total_calls": len(acc),
+        "adaptive_avg_real_tries": total_traces / len(acc) if acc else 0,
+        "sims_avg": total_traces / len(acc) if acc else 0,
+    }
+    print(f"\n===== V2B done: stop={stop_reason} N={budget_N} sims={total_traces}/{total_budget} "
+          f"rounds={num_rounds} frozen_rates={len(frozen_rates)}/{n_pairs} "
+          f"decided_faults={len(decided_faults)}/{len(faults)} jeffreys={use_jeffreys} ci={ci_mode} =====")
+    return output
+
+
+def fault_identification_non_deterministic_PO_unknown_fault_rate_V2B(
+        debug_print, render_mode, instance_seed, ml_model_name, domain_name,
+        observations, candidate_fault_modes, fault_rate_candidates, epsilon):
+    """v2b: the sims-study variant -- same total simulation budget as brute-force fixed-N
+    (B = MG_V2B_N * pairs * gaps), spent non-uniformly to beat brute-force rank at equal sims.
+    Ranks by the same Jeffreys point estimate as brute force. See _v2b_run."""
+    return _v2b_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name, observations,
+                    candidate_fault_modes, fault_rate_candidates, epsilon)
+
+
 def fault_identification_non_deterministic_PO(
         debug_print, render_mode,
 
