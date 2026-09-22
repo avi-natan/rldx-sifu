@@ -452,6 +452,13 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
         epsilon,
         ):
 
+    # sims-vs-rank study knob: if MG_FIXED_TRIES=N is set, every (gap x pair) estimate runs EXACTLY
+    # N simulations (epsilon made inert, min=max=N, batch<=N) -> total sims = N * num_estimates, a
+    # directly-controlled x-axis. Unset -> normal adaptive behaviour.
+    import os as _os
+    _fixed_tries = _os.environ.get("MG_FIXED_TRIES")
+    _fixed_tries = int(_fixed_tries) if _fixed_tries else None
+
     diagnosis_seed = instance_seed + SIMULATION_OFFSET
 
     policy = load_trained_model(domain_name, ml_model_name)
@@ -500,6 +507,15 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
         gap_bonus = int(150 * current_gap_length * scale)
         max_tries = base_max + gap_bonus
 
+        # fixed-budget override (sims-vs-rank study): exactly N sims per estimate
+        this_batch = 50
+        this_epsilon = epsilon
+        if _fixed_tries is not None:
+            min_tries = _fixed_tries
+            max_tries = _fixed_tries
+            this_batch = min(50, _fixed_tries)
+            this_epsilon = -1.0   # inert: margin can never be < negative, so N always binds
+
         current_gap_seed = diagnosis_seed + last_observed_index
         top_seed_offset_during_iterations = (max_tries + 50) * MAX_STATES
 
@@ -531,8 +547,8 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
                     debug_print,
                     min_tries=min_tries,
                     max_tries=max_tries,
-                    batch_size=50,
-                    epsilon=epsilon
+                    batch_size=this_batch,
+                    epsilon=this_epsilon
                 )
 
                 p_hat = max(res["p_hat"], 1e-12)
