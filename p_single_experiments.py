@@ -1437,7 +1437,7 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
 def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_rate=False,
                                                    fault_rate_list=(0.5, 0.8), maps_num=100,
                                                    run_folder=None, unit_start=0, unit_end=None,
-                                                   ufr_variant=None):
+                                                   ufr_variant=None, results_root=None):
     """FrozenLake WAY-2 fault-diagnosis benchmark (the only way we use; see
     experimental results/FrozenLake_v1/BENCHMARK_WAYS.md).
 
@@ -1609,8 +1609,13 @@ def multiple_experiment_FrozenLake_fault_benchmark(epsilon=0.03, unknown_fault_r
     file_path = (f"frozenlake_way2_PO_{fr_token}_epsilon_{file_suffix}"
                  f"_INJFR_{injfr_token}_UNITS_{unit_start}-{unit_end}")
 
-    _results_root = "ufr_experiments" if _variant is not None else "experimental results"
-    output_dir = domain_results_dir("FrozenLake_v1", run_folder, results_root=_results_root)
+    if results_root is not None:
+        # study mode: caller-chosen root; xlsx go in their own subfolder (logs sit alongside)
+        import os as _os
+        output_dir = _os.path.join(domain_results_dir("FrozenLake_v1", run_folder, results_root=results_root), "xlsx")
+    else:
+        _results_root = "ufr_experiments" if _variant is not None else "experimental results"
+        output_dir = domain_results_dir("FrozenLake_v1", run_folder, results_root=_results_root)
     exper_write_records_to_excel_ind(
         records,
         file_path,

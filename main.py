@@ -125,6 +125,15 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
+        "--results_root",
+        type=str,
+        default=None,
+        help="Override the results root folder (e.g. 'bruteforce_unknown_eps_experiments' for the "
+             "sims-vs-rank study). When set, xlsx land in <results_root>/<domain>/<run_folder>/xlsx/. "
+             "Default: the driver's usual root (experimental results / ufr_experiments)."
+    )
+
+    parser.add_argument(
         "--minigrid",
         action="store_true",
         help="Run the MiniGrid partial-observability fault benchmark "
@@ -266,6 +275,7 @@ if __name__ == '__main__':
                 unit_start=fl_unit_start,
                 unit_end=fl_unit_end,
                 ufr_variant=_fl_variant,
+                results_root=args.results_root,
             )
         elif args.minigrid:
             # MiniGrid: select env noise + the matching trained policy together, and the domain.
