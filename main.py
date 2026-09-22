@@ -307,6 +307,7 @@ if __name__ == '__main__':
                 unit_end=unit_end,
                 domain_name=mg_domain_name,
                 ufr_variant=_ufr_variant,
+                results_root=args.results_root,
             )
         else:
             # Known-rate: default. Unknown-rate: pass -ufr on the CLI (10x more MC sims, ~10x slower).

@@ -54,6 +54,13 @@ METHOD_TAG=""; if [ "${MG_METHOD}" != "full" ]; then METHOD_TAG="_${MG_METHOD}";
 # optional free-form output suffix (e.g. a budget sweep tag "_r40") so variants of the SAME method
 # land in their own folders instead of clobbering each other.
 OUT_SUFFIX="${MG_OUT_SUFFIX:-}"
+# sims-study knobs: MG_EPS overrides epsilon (was hardcoded 0.04); MG_RESULTS_ROOT routes to a study
+# folder (xlsx -> <root>/<domain>/<RF>/xlsx/); MG_RUN_FOLDER overrides the -o run folder entirely.
+# MG_FIXED_TRIES is read from the job env by the diagnoser (no flag). Brute-force study: MG_METHOD=full
+# + MG_UFR=1 -> base unknown diagnoser.
+MG_EPS=${MG_EPS:-0.04}
+ROOT_FLAG=""; if [ -n "${MG_RESULTS_ROOT:-}" ]; then ROOT_FLAG="--results_root ${MG_RESULTS_ROOT}"; fi
+RUN_FOLDER="${MG_RUN_FOLDER:-${FR_SUBDIR}/minigrid_bench_noise${NOISE_TAG}${UFR_TAG}${GRID_TAG}${METHOD_TAG}${OUT_SUFFIX}}"
 
 mkdir -p experiment_logs/minigrid_PO
 
@@ -65,6 +72,7 @@ python main.py \
     --mg_num_groups 390 \
     --mg_noise ${MG_NOISE} \
     --mg_fault_rate ${MG_FR} \
+    ${ROOT_FLAG} \
     ${UFR_FLAG} \
-    --epsilon 0.04 \
-    -o ${FR_SUBDIR}/minigrid_bench_noise${NOISE_TAG}${UFR_TAG}${GRID_TAG}${METHOD_TAG}${OUT_SUFFIX}
+    --epsilon ${MG_EPS} \
+    -o ${RUN_FOLDER}

@@ -1680,7 +1680,7 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
                                                  fault_rate=0.5, num_seeds=3, run_folder=None,
                                                  unit_start=0, unit_end=None,
                                                  domain_name="MiniGrid_Empty_16x16_v0",
-                                                 use_racing=False, ufr_variant=None):
+                                                 use_racing=False, ufr_variant=None, results_root=None):
     """MiniGrid partial-observability fault-diagnosis benchmark (item 5).
 
     FIXED benchmark: 26 execution faults x num_seeds instances, each carrying a STATIC 10-candidate
@@ -1810,7 +1810,7 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
     # Keep per-task xlsx in an xlsx/ subfolder of the run folder, so it sits alongside logs/
     # and plots/ (run_folder/{xlsx,logs,plots}) instead of loose at the top. Exploratory racing runs
     # go under ufr_experiments/ (kept OUT of the main experimental results/ tree until validated).
-    _results_root = "ufr_experiments" if _variant is not None else "experimental results"
+    _results_root = results_root if results_root is not None else ("ufr_experiments" if _variant is not None else "experimental results")
     output_dir = _os.path.join(domain_results_dir(domain_name, run_folder, results_root=_results_root), "xlsx")
     _os.makedirs(output_dir, exist_ok=True)
     exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)
