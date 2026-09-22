@@ -330,6 +330,7 @@ if __name__ == '__main__':
                 unit_start=taxi_unit_start,
                 unit_end=taxi_unit_end,
                 ufr_variant=_taxi_variant,
+                results_root=args.results_root,
             )
 
 

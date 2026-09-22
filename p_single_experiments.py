@@ -1303,7 +1303,8 @@ def multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_
 
 def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_folder=None,
                                                unknown_fault_rate=False, use_racing=False,
-                                               unit_start=0, unit_end=None, ufr_variant=None):
+                                               unit_start=0, unit_end=None, ufr_variant=None,
+                                               results_root=None):
     """Taxi-v4 HARD class-2 epsilon experiment (the "second experiment").
 
     Mirrors multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO, but the instances come from
@@ -1425,7 +1426,7 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
     file_path = (f"taxi_v4_hard_class2_PO_{fr_token}_epsilon_{file_suffix}_SEEDS_{num_seeds}"
                  f"_UNITS_{unit_start}-{unit_end}")
 
-    _results_root = "ufr_experiments" if _variant is not None else "experimental results"
+    _results_root = results_root if results_root is not None else ("ufr_experiments" if _variant is not None else "experimental results")
     output_dir = _os.path.join(domain_results_dir(domain_name, run_folder, results_root=_results_root), "xlsx")
     _os.makedirs(output_dir, exist_ok=True)
     exper_write_records_to_excel_ind(records, file_path, output_dir=output_dir)

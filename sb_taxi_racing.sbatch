@@ -21,10 +21,18 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 MG_METHOD=${MG_METHOD:-racing}
+MG_EPS=${MG_EPS:-0.04}                    # epsilon knob (was hardcoded 0.04)
+EPS_TAG=$(echo "$MG_EPS" | tr '.' '_')
+# brute-force UNKNOWN study: MG_UFR=1 adds -ufr; MG_RESULTS_ROOT routes to a study folder
+# (driver then writes xlsx to <root>/Taxi_v4/<RF>/xlsx/). MG_FIXED_TRIES is read straight from the
+# job env by the diagnoser (fixed sims-per-estimate) -- no flag needed here, just pass via --export.
+UFR_FLAG=""; if [ "${MG_UFR:-0}" = "1" ]; then UFR_FLAG="-ufr"; fi
+ROOT_FLAG=""; if [ -n "${MG_RESULTS_ROOT:-}" ]; then ROOT_FLAG="--results_root ${MG_RESULTS_ROOT}"; fi
 # optional free-form suffix (e.g. "_eps") so a variant of the same method lands in its own folder
-RF="taxi_${MG_METHOD}_eps004${MG_OUT_SUFFIX:-}"
-mkdir -p ufr_experiments/Taxi_v4/${RF}/logs
+RF="${MG_RUN_FOLDER:-taxi_${MG_METHOD}_eps${EPS_TAG}${MG_OUT_SUFFIX:-}}"
+mkdir -p experiment_logs/taxi_ufr
 
-python main.py --mg_method ${MG_METHOD} --epsilon 0.04 \
+python main.py --mg_method ${MG_METHOD} --epsilon ${MG_EPS} \
+    ${UFR_FLAG} ${ROOT_FLAG} \
     --mg_group ${SLURM_ARRAY_TASK_ID} --mg_num_groups 500 \
     -o ${RF}
