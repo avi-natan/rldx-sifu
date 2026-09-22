@@ -476,6 +476,11 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
     num_gaps = 0
     num_of_observed_states = 1
     adaptive_stats = []
+    # simulation-count bookkeeping for the sims-vs-rank study:
+    #   sims_per_gap  -> total sims spent on each gap (summed over the 100 pairs), in gap order
+    #   sims_per_pair -> total sims spent on each (fault, rate) pair (summed over gaps)
+    sims_per_gap = []
+    sims_per_pair = {}
 
 
     for i in range(1, len(observations)):
@@ -504,6 +509,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
             f"MAX_STATES={MAX_STATES}). Increase SEED_BLOCK (e.g. 10_000_000).")
 
         gap_start_time = time.time()
+        gap_sims_total = 0
 
         for curr_fault_rate in fault_rate_candidates:
 
@@ -533,6 +539,12 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
                 fault_prob_hat_for_step_and_rate[i][curr_fault_rate][curr_fault_key] = p_hat
                 adaptive_stats.append(res)
 
+                # sim-count bookkeeping (per gap, per pair)
+                n_sims = res["num_of_tries"]
+                gap_sims_total += n_sims
+                pair_key = f"{curr_fault_key}|{curr_fault_rate}"
+                sims_per_pair[pair_key] = sims_per_pair.get(pair_key, 0) + n_sims
+
                 if res["stop_reason"] == "max_tries":
                     print(
                         f"MAX HIT | gap={res['trace_length']} "
@@ -545,6 +557,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
 
         gap_end_time = time.time()
         gap_times.append(gap_end_time - gap_start_time)
+        sims_per_gap.append(gap_sims_total)
         num_gaps += 1
         last_observed_index = i
 
@@ -664,6 +677,18 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
 
     output["adaptive_total_calls"] = total_calls
     output["adaptive_avg_real_tries"] = avg_tries
+
+    # ---- explicit simulation-count fields for the sims-vs-rank study ----
+    import json as _json
+    all_tries = [s["num_of_tries"] for s in adaptive_stats]
+    output["total_simulations"] = sum(all_tries)                 # exact total sims this diagnosis
+    output["sims_count"] = len(all_tries)                        # number of (gap x pair) estimates
+    output["sims_avg"] = (sum(all_tries) / len(all_tries)) if all_tries else 0
+    output["sims_min"] = min(all_tries) if all_tries else 0      # min sims over all gap x pair estimates
+    output["sims_max"] = max(all_tries) if all_tries else 0      # max sims over all gap x pair estimates
+    output["sims_per_gap"] = _json.dumps(sims_per_gap)           # total sims per gap (summed over pairs)
+    output["sims_per_pair"] = _json.dumps(sims_per_pair)         # total sims per (fault|rate) pair (summed over gaps)
+
     output["adaptive_max_tries_avg"] = adaptive_max_tries_avg
     output["adaptive_min_tries_avg"] = adaptive_min_tries_avg
     output["adaptive_max_stops"] = max_hits
