@@ -465,6 +465,10 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
     _min_override = int(_min_override) if _min_override else None
     _batch_override = _os.environ.get("MG_BATCH")
     _batch_override = int(_batch_override) if _batch_override else None
+    # value floor: default replaces a 0-hit estimate with 1e-12 (log -> -27.6, a harsh penalty that
+    # dominates at low sim counts). MG_JEFFREYS=1 uses the Jeffreys estimate (hits+0.5)/(n+1) instead,
+    # which never returns 0 (a 0-hit at n=25 -> ~0.019 -> log ~ -3.9) and equals ~hits/n for large n.
+    _jeffreys = _os.environ.get("MG_JEFFREYS") == "1"
 
     diagnosis_seed = instance_seed + SIMULATION_OFFSET
 
@@ -560,7 +564,10 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
                     epsilon=this_epsilon
                 )
 
-                p_hat = max(res["p_hat"], 1e-12)
+                if _jeffreys:
+                    p_hat = (res["num_of_hits"] + 0.5) / (res["num_of_tries"] + 1)
+                else:
+                    p_hat = max(res["p_hat"], 1e-12)
                 fault_prob_hat_for_step_and_rate[i][curr_fault_rate][curr_fault_key] = p_hat
                 adaptive_stats.append(res)
 
@@ -706,6 +713,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
     # ---- explicit simulation-count fields for the sims-vs-rank study ----
     import json as _json
     all_tries = [s["num_of_tries"] for s in adaptive_stats]
+    output["jeffreys_floor"] = _jeffreys                         # value floor used: Jeffreys vs 1e-12
     output["total_simulations"] = sum(all_tries)                 # exact total sims this diagnosis
     output["sims_count"] = len(all_tries)                        # number of (gap x pair) estimates
     output["sims_avg"] = (sum(all_tries) / len(all_tries)) if all_tries else 0
