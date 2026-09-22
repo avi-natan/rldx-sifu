@@ -458,6 +458,13 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
     import os as _os
     _fixed_tries = _os.environ.get("MG_FIXED_TRIES")
     _fixed_tries = int(_fixed_tries) if _fixed_tries else None
+    # adaptive-epsilon knobs: MG_MIN_TRIES overrides the per-estimate min-simulations floor
+    # (default 100 + 10*gap); MG_BATCH overrides the sampling chunk size (default 50). Lowering both
+    # lets an epsilon sweep push total sims BELOW the usual floor while staying adaptive.
+    _min_override = _os.environ.get("MG_MIN_TRIES")
+    _min_override = int(_min_override) if _min_override else None
+    _batch_override = _os.environ.get("MG_BATCH")
+    _batch_override = int(_batch_override) if _batch_override else None
 
     diagnosis_seed = instance_seed + SIMULATION_OFFSET
 
@@ -501,19 +508,21 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
         current_gap_length = i - last_observed_index
 
         min_tries = 100 + 10 * current_gap_length
+        if _min_override is not None:
+            min_tries = _min_override           # low-min adaptive: fixed floor, no gap scaling
         scale = max(1.0, (0.025 / epsilon) ** 2)
 
         base_max = int(2500 * scale)
         gap_bonus = int(150 * current_gap_length * scale)
         max_tries = base_max + gap_bonus
 
-        # fixed-budget override (sims-vs-rank study): exactly N sims per estimate
-        this_batch = 50
+        this_batch = _batch_override if _batch_override is not None else 50
         this_epsilon = epsilon
+        # fixed-budget override (sims-vs-rank study): exactly N sims per estimate
         if _fixed_tries is not None:
             min_tries = _fixed_tries
             max_tries = _fixed_tries
-            this_batch = min(50, _fixed_tries)
+            this_batch = min(this_batch, _fixed_tries)
             this_epsilon = -1.0   # inert: margin can never be < negative, so N always binds
 
         current_gap_seed = diagnosis_seed + last_observed_index
