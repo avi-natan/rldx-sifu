@@ -790,6 +790,17 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
     confidence = float(_os.environ.get("MG_RACING_CONF", confidence))
     tie_margin = float(_os.environ.get("MG_RACING_TIE", tie_margin))
     _z_override = _os.environ.get("MG_RACING_Z")
+    # --- v3 improvements (opt-in, default OFF so plain racing is unchanged) ---
+    # #1 REINVEST: after the race decides the bottom, pour the leftover budget into the TOP-K
+    #    contenders' arms up to the per-arm cap, so the real candidates for the true fault get
+    #    brute-force-quality estimates (fixes racing's under-sampling rank ceiling).
+    # #2 RANKDIFF: order the top-K by a CRN pairwise-difference tournament (low-variance) instead
+    #    of noisy absolute scores.
+    # JEFFREYS: rank with the (hits+0.5)/(n+1) point estimate (matches brute-force/v2b, no 1e-12 floor).
+    reinvest_top = _os.environ.get("MG_RACING_REINVEST", "0") == "1"
+    rank_bydiff = _os.environ.get("MG_RACING_RANKDIFF", "0") == "1"
+    topk_protect = int(_os.environ.get("MG_RACING_TOPK", "5"))
+    use_jeffreys_rank = _os.environ.get("MG_RACING_JEFFREYS", "0") == "1"
 
     diagnosis_seed = instance_seed + SIMULATION_OFFSET
     policy = load_trained_model(domain_name, ml_model_name)
@@ -867,6 +878,13 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
         return (sum(a) / len(a)) if a else _EPS
 
     def L_point(f, r):
+        if use_jeffreys_rank:
+            s = 0.0
+            for g in gaps:
+                a = H[(f, r, g["idx"])]; n = len(a)
+                p = (sum(a) + 0.5) / (n + 1.0) if n > 0 else 0.5
+                s += math.log(p)
+            return s
         return sum(math.log(max(phat(f, r, g["idx"]), 1e-12)) for g in gaps)
 
     def best_rate(f):
@@ -964,6 +982,28 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
             stop_reason = "budget_exhausted"; break
         num_rounds += 1
 
+    # ----- 2b. REINVEST (#1): spend the budget the race saved on the TOP-K contenders, filling
+    # all their (rate, gap) arms up to the per-arm cap so the true fault (almost always in the top
+    # cluster) gets a brute-force-quality estimate -- same total budget ceiling as brute-force, but
+    # concentrated where the ranking is actually decided. -----
+    reinvested = 0
+    if reinvest_top:
+        full_budget = len(H) * max_tries_cap
+        spent = sum(len(v) for v in H.values())
+        order_now = sorted(faults, key=lambda f: L_point(f, best_rate(f)), reverse=True)
+        top = order_now[:max(topk_protect, 2)]
+        while spent < full_budget:
+            cand = [(f, r, g["idx"]) for f in top for r in rates for g in gaps
+                    if len(H[(f, r, g["idx"])]) < max_tries_cap]
+            if not cand:
+                break
+            f, r, gi = min(cand, key=lambda k: len(H[k]))
+            k = min(round_batch, max_tries_cap - len(H[(f, r, gi)]), full_budget - spent)
+            if k <= 0:
+                break
+            sample(f, r, gi, k); spent += k; reinvested += k
+        stop_reason = stop_reason + "+reinvest"
+
     # ----- 3. build outputs (mirror the full ufr method) -----
     log_prob_total_per_fault_and_rate = {f: {r: L_point(f, r) for r in rates} for f in faults}
     best_rate_per_fault = {}
@@ -973,7 +1013,25 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
         best_rate_per_fault[f] = br
         best_logL_per_fault[f] = log_prob_total_per_fault_and_rate[f][br]
 
-    sorted_faults = sorted(best_logL_per_fault.items(), key=lambda x: x[1], reverse=True)
+    if rank_bydiff:
+        # #2: order the TOP-K by a Copeland tournament on CRN pairwise differences (low variance),
+        # keep the rest by absolute score below them.
+        base_order = [f for f, _ in sorted(best_logL_per_fault.items(), key=lambda x: x[1], reverse=True)]
+        K = min(max(topk_protect, 2), len(base_order))
+        top = base_order[:K]; rest = base_order[K:]
+        wins = {f: 0 for f in top}; margin = {f: 0.0 for f in top}
+        for i in range(len(top)):
+            for j in range(i + 1, len(top)):
+                A = top[i]; B = top[j]
+                D, _half = diff_decision(A, best_rate_per_fault[A], B, best_rate_per_fault[B])
+                if D > 0: wins[A] += 1
+                elif D < 0: wins[B] += 1
+                margin[A] += D; margin[B] -= D
+        top_sorted = sorted(top, key=lambda f: (wins[f], margin[f]), reverse=True)
+        ordered = top_sorted + rest
+        sorted_faults = [(f, best_logL_per_fault[f]) for f in ordered]
+    else:
+        sorted_faults = sorted(best_logL_per_fault.items(), key=lambda x: x[1], reverse=True)
     T = max(G, 1)
     sorted_faults_geo = [(fault, math.exp(logL / T)) for fault, logL in sorted_faults]
 
@@ -1015,6 +1073,11 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
     output["racing_cap"] = max_tries_cap
     output["racing_init_batch"] = init_batch
     output["racing_round_batch"] = round_batch
+    output["racing_reinvest"] = int(reinvest_top)
+    output["racing_reinvested_traces"] = reinvested
+    output["racing_rank_bydiff"] = int(rank_bydiff)
+    output["racing_topk"] = topk_protect
+    output["racing_jeffreys"] = int(use_jeffreys_rank)
     # keep the columns the ufr path also emits, so the xlsx schema lines up
     output["adaptive_total_calls"] = len(H)
     output["adaptive_avg_real_tries"] = total_traces / len(H) if H else 0
