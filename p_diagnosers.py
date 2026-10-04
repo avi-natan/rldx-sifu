@@ -1089,6 +1089,203 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
     return output
 
 
+def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB(
+        debug_print, render_mode, instance_seed, ml_model_name, domain_name,
+        observations, candidate_fault_modes, fault_rate_candidates, epsilon):
+    """UNKNOWN-fault-rate diagnosis by UCB1 bandit allocation (mentor's suggestion).
+
+    Each ARM = (fault, rate, gap). Spend the SAME total budget as brute-force fixed-N
+    (B = N * arms) but allocate it with UCB1:
+        UCB(arm) = p_jeffreys(arm) + C * sqrt( ln(all) / n_arm )
+      * exploit  p_jeffreys = (hits+0.5)/(n+1)  -- matches brute-force/v2b ranking, no 1e-12 floor.
+      * explore  C * sqrt(ln(all)/n)            -- all = total sims over every arm, n = this arm's sims.
+    Each round pulls the max-UCB LIVE arm and adds a batch. FREEZE (default on) drops (a) a rate that
+    provably can't be its fault's best rate, and (b) a fault confidently outside the top-K -- so the
+    budget flows to the contenders. Ranking (end): each fault's best-rate Jeffreys log-likelihood over
+    all gaps, sorted -- identical scoring to brute-force/v2b, only the ALLOCATION differs.
+    Knobs (env): MG_UCB_C / MG_UCB_N / MG_UCB_INIT / MG_UCB_BATCH / MG_UCB_FREEZE / MG_UCB_TOPK."""
+    import os as _os
+    C = float(_os.environ.get("MG_UCB_C", "1.4142"))
+    budget_N = int(_os.environ.get("MG_UCB_N", "100"))
+    init_batch = int(_os.environ.get("MG_UCB_INIT", "30"))
+    batch = int(_os.environ.get("MG_UCB_BATCH", "20"))
+    do_freeze = _os.environ.get("MG_UCB_FREEZE", "1") == "1"
+    topk = int(_os.environ.get("MG_UCB_TOPK", "5"))
+    recheck = int(_os.environ.get("MG_UCB_RECHECK", "20"))
+
+    diagnosis_seed = instance_seed + SIMULATION_OFFSET
+    policy = load_trained_model(domain_name, ml_model_name)
+    simulator = make_wrapped_env(domain_name, render_mode)
+    initial_obs, _ = simulator.reset(seed=instance_seed)
+    assert comparators[domain_name](observations[0], initial_obs)
+    comparator = comparators[domain_name]
+    t0 = time.time()
+
+    faults = list(candidate_fault_modes.keys())
+    rates = list(fault_rate_candidates)
+
+    gaps = []
+    last = 0
+    for i in range(1, len(observations)):
+        if observations[i] is None:
+            continue
+        gaps.append({"idx": len(gaps), "start": observations[last], "end": observations[i],
+                     "length": i - last, "seed": diagnosis_seed + last})
+        last = i
+    G = max(len(gaps), 1)
+    n_arms = len(faults) * len(rates) * len(gaps)
+    total_budget = budget_N * n_arms
+
+    acc = {(f, r, g["idx"]): {"hits": 0, "n": 0} for f in faults for r in rates for g in gaps}
+
+    def sample(f, r, gidx, k):
+        a = acc[(f, r, gidx)]; g = gaps[gidx]; fm = candidate_fault_modes[f]
+        base = g["seed"]; rng = random.Random()
+        for i in range(a["n"], a["n"] + k):
+            s = base + i * MAX_STATES
+            rng.seed(s)
+            nxt = execute_one_trace(g["start"], g["length"], fm, r, domain_name, s, rng,
+                                    simulator, policy, False)
+            if comparator(nxt, g["end"]):
+                a["hits"] += 1
+            a["n"] += 1
+
+    def jeff(a):
+        return (a["hits"] + 0.5) / (a["n"] + 1.0)
+
+    def wilson(a):
+        n = a["n"]
+        if n == 0:
+            return 1e-12, 1.0
+        z = 1.96; phat = a["hits"] / n; denom = 1.0 + z * z / n
+        center = (phat + z * z / (2.0 * n)) / denom
+        half = (z / denom) * math.sqrt(phat * (1.0 - phat) / n + z * z / (4.0 * n * n))
+        return max(center - half, 1e-12), min(center + half, 1.0)
+
+    def pair_interval(f, r):
+        Lp = 0.0; sq = 0.0
+        for g in gaps:
+            a = acc[(f, r, g["idx"])]
+            Lp += math.log(jeff(a))
+            lo, hi = wilson(a)
+            h = 0.5 * (math.log(max(hi, 1e-12)) - math.log(max(lo, 1e-12)))
+            sq += h * h
+        H = math.sqrt(sq)
+        return Lp, Lp - H, Lp + H
+
+    frozen_rates = set()
+    frozen_faults = set()
+
+    def refreeze():
+        # (a) drop rates that can't be their fault's best rate
+        fault_best = {}
+        for f in faults:
+            live_r = [r for r in rates if (f, r) not in frozen_rates]
+            if not live_r:
+                live_r = rates
+            ivs = {r: pair_interval(f, r) for r in live_r}
+            if len(live_r) > 1:
+                best_low = max(ivs[r][1] for r in live_r)
+                for r in live_r:
+                    if ivs[r][2] < best_low:
+                        frozen_rates.add((f, r))
+            live_r2 = [r for r in rates if (f, r) not in frozen_rates] or rates
+            br = max(live_r2, key=lambda r: pair_interval(f, r)[0])
+            fault_best[f] = (br,) + pair_interval(f, br)
+        # (b) freeze faults confidently outside the top-K
+        lows = sorted((fault_best[f][2] for f in faults), reverse=True)
+        thr = lows[min(topk, len(lows)) - 1] if lows else -1e18
+        for f in faults:
+            if fault_best[f][3] < thr:   # its upper < K-th best lower
+                frozen_faults.add(f)
+        return fault_best
+
+    # ---- init: pull every arm once (init_batch) ----
+    for f in faults:
+        for r in rates:
+            for g in gaps:
+                sample(f, r, g["idx"], min(init_batch, budget_N))
+    spent = sum(a["n"] for a in acc.values())
+    if do_freeze:
+        refreeze()
+
+    # ---- UCB loop ----
+    picks = 0; stop_reason = "budget"
+    while spent < total_budget:
+        all_n = spent
+        best_key = None; best_u = -1e18
+        for f in faults:
+            if do_freeze and f in frozen_faults:
+                continue
+            for r in rates:
+                if do_freeze and (f, r) in frozen_rates:
+                    continue
+                for g in gaps:
+                    a = acc[(f, r, g["idx"])]
+                    u = jeff(a) + C * math.sqrt(math.log(max(all_n, 2.0)) / a["n"])
+                    if u > best_u:
+                        best_u = u; best_key = (f, r, g["idx"])
+        if best_key is None:
+            stop_reason = "all_frozen"; break
+        k = min(batch, total_budget - spent)
+        if k <= 0:
+            break
+        sample(best_key[0], best_key[1], best_key[2], k); spent += k; picks += 1
+        if do_freeze and picks % recheck == 0:
+            refreeze()
+
+    # ---- rank by best-rate Jeffreys logL over all gaps (same scoring as brute-force/v2b) ----
+    def L_point(f, r):
+        return sum(math.log(jeff(acc[(f, r, g["idx"])])) for g in gaps)
+    log_prob_total_per_fault_and_rate = {f: {r: L_point(f, r) for r in rates} for f in faults}
+    best_rate_per_fault = {}; best_logL_per_fault = {}
+    for f in faults:
+        br = max(rates, key=lambda r: log_prob_total_per_fault_and_rate[f][r])
+        best_rate_per_fault[f] = br
+        best_logL_per_fault[f] = log_prob_total_per_fault_and_rate[f][br]
+    sorted_faults = sorted(best_logL_per_fault.items(), key=lambda x: x[1], reverse=True)
+    total_traces = sum(a["n"] for a in acc.values())
+    T = G
+
+    extra_output = ""
+    for fault, logL in sorted_faults:
+        extra_output += f"Fault: {fault}, logL: {logL:.6f}, Best Estimated Rate: {best_rate_per_fault[fault]}\n"
+
+    output = {
+        "diagnosis_time_sec": time.time() - t0,
+        "diagnosis_time_ms": (time.time() - t0) * 1000,
+        "avg_gap_time": 0.0,
+        "num_gaps": len(gaps),
+        "sorted_faults": sorted_faults,
+        "sorted_faults_with_exp_val": [(f, math.exp(L / T)) for f, L in sorted_faults],
+        "best_rate_per_fault": best_rate_per_fault,
+        "log_prob_total_per_fault_and_rate": log_prob_total_per_fault_and_rate,
+        "fault_rate_candidates": fault_rate_candidates,
+        "observations": observations,
+        "observations_len": len(observations),
+        "extra_output": extra_output,
+        "total_simulations": total_traces,
+        "ucb_total_traces": total_traces,
+        "ucb_total_budget": total_budget,
+        "ucb_budget_N": budget_N,
+        "ucb_C": C,
+        "ucb_init_batch": init_batch,
+        "ucb_batch": batch,
+        "ucb_freeze": int(do_freeze),
+        "ucb_topk": topk,
+        "ucb_picks": picks,
+        "ucb_frozen_rates": len(frozen_rates),
+        "ucb_frozen_faults": len(frozen_faults),
+        "ucb_stop_reason": stop_reason,
+        "adaptive_total_calls": len(acc),
+        "adaptive_avg_real_tries": total_traces / len(acc) if acc else 0,
+    }
+    print(f"\n===== UCB done: stop={stop_reason} C={C} N={budget_N} picks={picks} "
+          f"traces={total_traces}/{total_budget} frozen_rates={len(frozen_rates)} "
+          f"frozen_faults={len(frozen_faults)} =====")
+    return output
+
+
 def _v1_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name, observations,
             candidate_fault_modes, fault_rate_candidates, epsilon,
             use_freeze, init_batch=40, round_batch=40, max_rounds=80):
