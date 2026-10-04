@@ -780,11 +780,16 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
     """
     # Budget is tunable at launch (no code edit) via env vars, so we can sweep the time<->rank dial:
     #   MG_RACING_INIT / MG_RACING_ROUND / MG_RACING_CAP / MG_RACING_ROUNDS
+    #   MG_RACING_CONF -> confidence (0..1); MG_RACING_Z -> set the per-comparison quantile DIRECTLY
+    #   (overrides confidence); MG_RACING_TIE -> tie_margin (log-L half-width below which we call a tie).
     import os as _os
     init_batch = int(_os.environ.get("MG_RACING_INIT", init_batch))
     round_batch = int(_os.environ.get("MG_RACING_ROUND", round_batch))
     max_tries_cap = int(_os.environ.get("MG_RACING_CAP", max_tries_cap))
     max_rounds = int(_os.environ.get("MG_RACING_ROUNDS", max_rounds))
+    confidence = float(_os.environ.get("MG_RACING_CONF", confidence))
+    tie_margin = float(_os.environ.get("MG_RACING_TIE", tie_margin))
+    _z_override = _os.environ.get("MG_RACING_Z")
 
     diagnosis_seed = instance_seed + SIMULATION_OFFSET
     policy = load_trained_model(domain_name, ml_model_name)
@@ -825,7 +830,21 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
     # variance of their DIFFERENCE -- the key to deciding comparisons cheaply. -----
     H = {(f, r, g["idx"]): [] for f in faults for r in rates for g in gaps}
     frozen_rate = set()   # (unused in v2; kept for output-schema compatibility)
-    z = 1.96 if confidence <= 0.95 else 2.576   # per-comparison normal quantile
+    # per-comparison normal quantile: direct MG_RACING_Z wins; else map confidence -> z finely so a
+    # confidence sweep actually moves the rank/sims dial (the old 2-step rule was too coarse).
+    if _z_override is not None:
+        z = float(_z_override)
+    else:
+        _Z_TABLE = {0.80: 1.2816, 0.90: 1.6449, 0.95: 1.9600, 0.975: 2.2414,
+                    0.99: 2.5758, 0.995: 2.8070, 0.999: 3.2905}
+        z = _Z_TABLE.get(round(confidence, 3))
+        if z is None:
+            # interpolate/standard-normal inverse-CDF for arbitrary confidence values
+            try:
+                from statistics import NormalDist as _ND
+                z = _ND().inv_cdf(1.0 - (1.0 - confidence) / 2.0)
+            except Exception:
+                z = 1.96 if confidence <= 0.95 else 2.576
 
     def sample(f, r, gidx, n):
         """Run n MORE traces for (f,r,gap), continuing the seed sequence (CRN-aligned by index)."""
@@ -990,6 +1009,12 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
     output["racing_frozen_rate_pairs"] = len(frozen_rate)
     output["racing_stop_reason"] = stop_reason
     output["racing_confidence"] = confidence
+    # sweep knobs recorded per instance so the xlsx is self-describing (config -> rank/sims)
+    output["racing_z"] = z
+    output["racing_tie_margin"] = tie_margin
+    output["racing_cap"] = max_tries_cap
+    output["racing_init_batch"] = init_batch
+    output["racing_round_batch"] = round_batch
     # keep the columns the ufr path also emits, so the xlsx schema lines up
     output["adaptive_total_calls"] = len(H)
     output["adaptive_avg_real_tries"] = total_traces / len(H) if H else 0
