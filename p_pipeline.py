@@ -17,7 +17,8 @@ from p_diagnosers import diagnosers, SIF, SN, W, SIFU, SIFU2, SIFU3, SIFU4, SIFU
     fault_identification_non_deterministic_PO_unknown_fault_rate_V1_FREEZE, \
     fault_identification_non_deterministic_PO_unknown_fault_rate_V2, \
     fault_identification_non_deterministic_PO_unknown_fault_rate_V2B, \
-    fault_identification_non_deterministic_PO_unknown_fault_rate_UCB
+    fault_identification_non_deterministic_PO_unknown_fault_rate_UCB, \
+    fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV
 from p_executor import execute
 
 
@@ -841,7 +842,8 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
                 "v1_freeze": fault_identification_non_deterministic_PO_unknown_fault_rate_V1_FREEZE,
                 "v2": fault_identification_non_deterministic_PO_unknown_fault_rate_V2,
                 "v2b": fault_identification_non_deterministic_PO_unknown_fault_rate_V2B,
-                "ucb": fault_identification_non_deterministic_PO_unknown_fault_rate_UCB}
+                "ucb": fault_identification_non_deterministic_PO_unknown_fault_rate_UCB,
+                "ucbv": fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV}
     if unknown_fault_rate and use_racing:
         raw_output = fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
             debug_print=debug_print,
