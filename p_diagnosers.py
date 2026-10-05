@@ -1089,29 +1089,55 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
     return output
 
 
-def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB(
+def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FRG(
         debug_print, render_mode, instance_seed, ml_model_name, domain_name,
         observations, candidate_fault_modes, fault_rate_candidates, epsilon):
-    """UNKNOWN-fault-rate diagnosis by UCB1 bandit allocation (mentor's suggestion).
+    """UCB VARIANT 1 -- ARM = (fault, rate, gap).  Dedicated, HARDCODED diagnoser for the
+    bruteforce-improvement study (mg_method = 'ucb_frg'). Self-contained: shares no logic with the
+    coarse-arm ucbv variants; only the shared infrastructure (execute_one_trace / load_trained_model /
+    make_wrapped_env / comparators) is common.
 
-    Each ARM = (fault, rate, gap). Spend the SAME total budget as brute-force fixed-N
-    (B = N * arms) but allocate it with UCB1:
-        UCB(arm) = p_jeffreys(arm) + C * sqrt( ln(all) / n_arm )
-      * exploit  p_jeffreys = (hits+0.5)/(n+1)  -- matches brute-force/v2b ranking, no 1e-12 floor.
-      * explore  C * sqrt(ln(all)/n)            -- all = total sims over every arm, n = this arm's sims.
-    Each round pulls the max-UCB LIVE arm and adds a batch. FREEZE (default on) drops (a) a rate that
-    provably can't be its fault's best rate, and (b) a fault confidently outside the top-K -- so the
-    budget flows to the contenders. Ranking (end): each fault's best-rate Jeffreys log-likelihood over
-    all gaps, sorted -- identical scoring to brute-force/v2b, only the ALLOCATION differs.
-    Knobs (env): MG_UCB_C / MG_UCB_N / MG_UCB_INIT / MG_UCB_BATCH / MG_UCB_FREEZE / MG_UCB_TOPK."""
+    One bandit arm per (fault, rate, gap). Spend the SAME total budget as brute-force fixed-N
+    (B = N * |faults| * |rates| * |gaps|) but allocate it greedily with UCB1:
+
+        UCB(f,r,g) = p_jeffreys(f,r,g)  +  C * sqrt( ln(all) / n_{f,r,g} )
+          exploit  p_jeffreys = (hits+0.5)/(n+1)   -- the SAME Jeffreys estimate used to rank, in [0,1].
+          explore  C * sqrt( ln(all) / n )         -- all = total sims so far over EVERY arm,
+                                                       n   = sims on THIS arm. Few samples -> big bonus.
+
+    Procedure:
+      0. INIT   -- pull every (fault,rate,gap) arm INIT_BATCH times (uniform warm-up; gives each arm a
+                   first estimate and makes all faults score over the same gaps -> comparable).
+      1. LOOP   -- while budget remains: pull the single LIVE arm with the largest UCB, add BATCH sims,
+                   then re-run FREEZE (after EVERY pull). FREEZE has two parts, IDENTICAL to v2b:
+                     (a) RATE freeze    -- a rate whose L-interval upper end is below another live
+                         rate's lower end can't be that fault's best rate -> stop refining it; and
+                     (b) FAULT freeze (neighbour separation) -- rank faults by score; a fault is
+                         "decided" (frozen) once it is separated from BOTH its ranking neighbours
+                         (its low > the next fault's high, AND the previous fault's low > its high).
+      2. RANK   -- each fault scored by its best rate's Jeffreys log-likelihood summed over all gaps,
+                   sorted descending. IDENTICAL scoring to brute-force / v2b; only ALLOCATION differs.
+
+    Estimators: Jeffreys point (hits+0.5)/(n+1) for ranking (boundary-safe, no 1e-12 floor); 95% Wilson
+    score interval for the freeze intervals. Per-gap Common-Random-Numbers seeding (base + i*MAX_STATES).
+
+    HARDCODED method constants (fixed for the whole comparison; NOT env-tunable):
+        INIT_BATCH = 30                        uniform warm-up sims per arm
+        FREEZE     = True                      prune dominated rates + decide faults (v2b neighbour
+                                               rule); re-run after EVERY pull (no recheck knob)
+        BATCH      = 100 if N>=200 else 20      pull size (matches brute/v2b batch convention)
+    Only the two STUDY VARIABLES are read from the environment:
+        MG_UCB_FRG_C   exploration constant C   (sweep: {0.25,0.5,1.0,1.414,2.0,3.0,4.0})
+        MG_UCB_FRG_N   per-estimate budget N    (sweep: {50,100,200,400,800})
+    """
     import os as _os
-    C = float(_os.environ.get("MG_UCB_C", "1.4142"))
-    budget_N = int(_os.environ.get("MG_UCB_N", "100"))
-    init_batch = int(_os.environ.get("MG_UCB_INIT", "30"))
-    batch = int(_os.environ.get("MG_UCB_BATCH", "20"))
-    do_freeze = _os.environ.get("MG_UCB_FREEZE", "1") == "1"
-    topk = int(_os.environ.get("MG_UCB_TOPK", "5"))
-    recheck = int(_os.environ.get("MG_UCB_RECHECK", "20"))
+    # --- the only two tunables: the study variables swept on the cluster ---
+    C = float(_os.environ.get("MG_UCB_FRG_C", "1.4142"))
+    budget_N = int(_os.environ.get("MG_UCB_FRG_N", "100"))
+    # --- hardcoded method constants (fixed for the comparison) ---
+    init_batch = 30
+    do_freeze = True
+    batch = 100 if budget_N >= 200 else 20
 
     diagnosis_seed = instance_seed + SIMULATION_OFFSET
     policy = load_trained_model(domain_name, ml_model_name)
@@ -1173,32 +1199,46 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB(
         H = math.sqrt(sq)
         return Lp, Lp - H, Lp + H
 
-    frozen_rates = set()
-    frozen_faults = set()
+    frozen_rates = set()      # (fault, rate) pairs proven not to be their fault's best rate
+    decided_faults = set()    # faults whose rank is locked vs BOTH neighbours (frozen; v2b rule)
 
-    def refreeze():
-        # (a) drop rates that can't be their fault's best rate
-        fault_best = {}
+    def fault_score(f):
+        """(L_point, L_lo, L_hi, best_rate) for a fault at its best live rate."""
+        live = [r for r in rates if (f, r) not in frozen_rates] or rates
+        ivs = {r: pair_interval(f, r) for r in live}
+        best_r = max(live, key=lambda r: ivs[r][0])
+        Lp = ivs[best_r][0]
+        Llo = max(ivs[r][1] for r in live)
+        Lhi = max(ivs[r][2] for r in live)
+        return Lp, Llo, Lhi, best_r
+
+    def refreeze_decide():
+        """Freeze dominated rates; decide (freeze) faults whose rank is fixed vs both neighbours.
+        IDENTICAL rule to v2b's refreeze_decide. Returns the still-undecided fault set."""
+        # (a) RATE freeze: a rate whose interval upper end is below another live rate's low end
         for f in faults:
-            live_r = [r for r in rates if (f, r) not in frozen_rates]
-            if not live_r:
-                live_r = rates
-            ivs = {r: pair_interval(f, r) for r in live_r}
-            if len(live_r) > 1:
-                best_low = max(ivs[r][1] for r in live_r)
-                for r in live_r:
-                    if ivs[r][2] < best_low:
-                        frozen_rates.add((f, r))
-            live_r2 = [r for r in rates if (f, r) not in frozen_rates] or rates
-            br = max(live_r2, key=lambda r: pair_interval(f, r)[0])
-            fault_best[f] = (br,) + pair_interval(f, br)
-        # (b) freeze faults confidently outside the top-K
-        lows = sorted((fault_best[f][2] for f in faults), reverse=True)
-        thr = lows[min(topk, len(lows)) - 1] if lows else -1e18
+            if f in decided_faults:
+                continue
+            live = [r for r in rates if (f, r) not in frozen_rates]
+            if len(live) <= 1:
+                continue
+            ivs = {r: pair_interval(f, r) for r in live}
+            best_low = max(ivs[r][1] for r in live)
+            for r in live:
+                if ivs[r][2] < best_low:
+                    frozen_rates.add((f, r))
+        # (b) FAULT freeze: decide faults separated from BOTH ranking neighbours (neighbour separation)
+        sc = {f: fault_score(f) for f in faults}
+        order = sorted(faults, key=lambda f: sc[f][0], reverse=True)
+        undec = set()
+        for k in range(len(order) - 1):
+            A, B = order[k], order[k + 1]
+            if not (sc[A][1] > sc[B][2]):   # A's low not above B's high -> order not yet confident
+                undec.add(A); undec.add(B)
         for f in faults:
-            if fault_best[f][3] < thr:   # its upper < K-th best lower
-                frozen_faults.add(f)
-        return fault_best
+            if f not in undec:
+                decided_faults.add(f)
+        return undec
 
     # ---- init: pull every arm once (init_batch) ----
     for f in faults:
@@ -1207,15 +1247,15 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB(
                 sample(f, r, g["idx"], min(init_batch, budget_N))
     spent = sum(a["n"] for a in acc.values())
     if do_freeze:
-        refreeze()
+        refreeze_decide()
 
-    # ---- UCB loop ----
+    # ---- UCB loop (re-run FREEZE after every pull; no recheck cadence) ----
     picks = 0; stop_reason = "budget"
     while spent < total_budget:
         all_n = spent
         best_key = None; best_u = -1e18
         for f in faults:
-            if do_freeze and f in frozen_faults:
+            if do_freeze and f in decided_faults:
                 continue
             for r in rates:
                 if do_freeze and (f, r) in frozen_rates:
@@ -1226,13 +1266,13 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB(
                     if u > best_u:
                         best_u = u; best_key = (f, r, g["idx"])
         if best_key is None:
-            stop_reason = "all_frozen"; break
+            stop_reason = "all_decided"; break
         k = min(batch, total_budget - spent)
         if k <= 0:
             break
         sample(best_key[0], best_key[1], best_key[2], k); spent += k; picks += 1
-        if do_freeze and picks % recheck == 0:
-            refreeze()
+        if do_freeze:
+            refreeze_decide()
 
     # ---- rank by best-rate Jeffreys logL over all gaps (same scoring as brute-force/v2b) ----
     def L_point(f, r):
@@ -1272,17 +1312,18 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB(
         "ucb_init_batch": init_batch,
         "ucb_batch": batch,
         "ucb_freeze": int(do_freeze),
-        "ucb_topk": topk,
         "ucb_picks": picks,
+        "ucbfrg_rate_freezes": len(frozen_rates),      # # of (fault,rate) rate-freezes this diagnosis
+        "ucbfrg_fault_freezes": len(decided_faults),   # # of entire-fault freezes this diagnosis
         "ucb_frozen_rates": len(frozen_rates),
-        "ucb_frozen_faults": len(frozen_faults),
+        "ucb_frozen_faults": len(decided_faults),
         "ucb_stop_reason": stop_reason,
         "adaptive_total_calls": len(acc),
         "adaptive_avg_real_tries": total_traces / len(acc) if acc else 0,
     }
-    print(f"\n===== UCB done: stop={stop_reason} C={C} N={budget_N} picks={picks} "
-          f"traces={total_traces}/{total_budget} frozen_rates={len(frozen_rates)} "
-          f"frozen_faults={len(frozen_faults)} =====")
+    print(f"\n===== UCB_FRG done: stop={stop_reason} C={C} N={budget_N} picks={picks} "
+          f"traces={total_traces}/{total_budget} rate_freezes={len(frozen_rates)} "
+          f"fault_freezes={len(decided_faults)} =====")
     return output
 
 
