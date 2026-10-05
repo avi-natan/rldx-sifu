@@ -1291,19 +1291,23 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV(
         observations, candidate_fault_modes, fault_rate_candidates, epsilon):
     """UNKNOWN-fault-rate diagnosis by UCB over COARSE arms + v2b-style within-arm spend (ucbv).
 
-    The combine-v2b-and-UCB idea: the ARM is just a (fault, rate) -- NOT (fault, rate, gap). There
-    are len(faults)*len(rates) arms instead of len(faults)*len(rates)*len(gaps), so the uniform
-    warm-up is cheaper by a factor of #gaps, which attacks UCB's low-N weakness (where v2b wins).
+    The combine-v2b-and-UCB idea: the ARM is a (fault, rate) -- NOT (fault, rate, gap). UCB chooses
+    WHICH (fault, rate) to invest the next batch in; v2b's own rule chooses WHICH GAP of that pair to
+    spend it on. So the bandit focuses budget on the promising fault-rates (instead of v2b spreading
+    uniformly across every contended pair each round), while gap allocation stays v2b-principled.
 
         UCB(arm) = geomean_g p_jeffreys(f,r,g)  +  C * sqrt( ln(all) / n_arm )
       * exploit  geomean over gaps of (hits+0.5)/(n+1)  -- a [0,1] reward (geometric mean of per-gap
-                 Jeffreys hit-rates), with unsampled gaps neutral at 0.5.
+                 Jeffreys hit-rates).
       * explore  C * sqrt(ln(all)/n_arm)  -- all = total sims, n_arm = sims over ALL of this arm's gaps.
-    Each round pulls the max-UCB LIVE arm and adds a batch to ONE of its gaps chosen by MG_UCBV_GAPMODE:
-      * "widest"       (default) -- always the single widest gap (the most discriminative; literal
-                                     "spend the budget on its widest gap").
-      * "proportional" -- argmax length/(n+1): widest-first, then fills narrower gaps ~proportional to width.
-      * "even"         -- least-sampled gap (round-robin), i.e. plain coarse-arm UCB.
+    INIT seeds EVERY (fault, rate, gap) with init_batch (like v2b) so every pair scores L over the SAME
+    gaps -> fault scores stay comparable. Then each round pulls the max-UCB LIVE arm and adds a batch to
+    ONE of its gaps chosen by MG_UCBV_GAPMODE:
+      * "ci"     (default) -- the WIDEST-Wilson-CI gap in log-space, i.e. the pair's currently most
+                              UNCERTAIN estimate. This is exactly v2b's within-pair rule (put sims where
+                              the estimate most limits the ranking).
+      * "length" -- the longest hidden-span gap (fixed; ignores current uncertainty).
+      * "even"   -- least-sampled gap (round-robin).
     FREEZE (default on) drops a rate that can't be its fault's best, and a fault confidently outside the
     top-K. Ranking (end): each fault's best-rate Jeffreys log-likelihood over ALL gaps, sorted -- IDENTICAL
     scoring to brute-force/v2b, only the ALLOCATION differs. Total budget = N * faults * rates * gaps
@@ -1318,7 +1322,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV(
     do_freeze = _os.environ.get("MG_UCBV_FREEZE", "1") == "1"
     topk = int(_os.environ.get("MG_UCBV_TOPK", "5"))
     recheck = int(_os.environ.get("MG_UCBV_RECHECK", "20"))
-    gapmode = _os.environ.get("MG_UCBV_GAPMODE", "widest")
+    gapmode = _os.environ.get("MG_UCBV_GAPMODE", "ci")
 
     diagnosis_seed = instance_seed + SIMULATION_OFFSET
     policy = load_trained_model(domain_name, ml_model_name)
@@ -1380,13 +1384,17 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV(
     def arm_total_n(f, r):
         return sum(acc[(f, r, g["idx"])]["n"] for g in gaps)
 
+    def gap_logwidth(a):
+        lo, hi = wilson(a)
+        return math.log(max(hi, 1e-12)) - math.log(max(lo, 1e-12))
+
     def pick_gap(f, r):
-        if gapmode == "widest":
+        if gapmode == "ci":   # v2b rule: widest Wilson CI (most uncertain) gap, log-space
+            return max((g["idx"] for g in gaps),
+                       key=lambda gi: gap_logwidth(acc[(f, r, gi)]))
+        if gapmode == "length":   # longest hidden span (fixed)
             return gaps_by_width[0]["idx"]
-        if gapmode == "proportional":
-            g = max(gaps, key=lambda g: g["length"] / (acc[(f, r, g["idx"])]["n"] + 1.0))
-            return g["idx"]
-        g = min(gaps, key=lambda g: acc[(f, r, g["idx"])]["n"])  # "even"
+        g = min(gaps, key=lambda g: acc[(f, r, g["idx"])]["n"])  # "even" round-robin
         return g["idx"]
 
     def pair_interval(f, r):
@@ -1426,10 +1434,11 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV(
                 frozen_faults.add(f)
         return fault_best
 
-    # ---- init: pull every (fault, rate) ARM once, on its pick_gap, with init_batch ----
+    # ---- init: seed EVERY (fault, rate, gap) uniformly (like v2b) so fault scores are comparable ----
     for f in faults:
         for r in rates:
-            sample(f, r, pick_gap(f, r), min(init_batch, budget_N))
+            for g in gaps:
+                sample(f, r, g["idx"], min(init_batch, budget_N))
     spent = sum(a["n"] for a in acc.values())
     if do_freeze:
         refreeze()
