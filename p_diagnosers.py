@@ -1312,12 +1312,17 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV(
     top-K. Ranking (end): each fault's best-rate Jeffreys log-likelihood over ALL gaps, sorted -- IDENTICAL
     scoring to brute-force/v2b, only the ALLOCATION differs. Total budget = N * faults * rates * gaps
     (equal to brute-force fixed-N), so comparisons are at equal budget.
-    Knobs (env): MG_UCBV_C / MG_UCBV_N / MG_UCBV_INIT / MG_UCBV_BATCH / MG_UCBV_FREEZE / MG_UCBV_TOPK
-                 / MG_UCBV_GAPMODE / MG_UCBV_RECHECK."""
+    Knobs (env): MG_UCBV_C / MG_UCBV_N / MG_UCBV_INIT / MG_UCBV_INITFRAC / MG_UCBV_BATCH / MG_UCBV_FREEZE
+                 / MG_UCBV_TOPK / MG_UCBV_GAPMODE / MG_UCBV_RECHECK."""
     import os as _os
     C = float(_os.environ.get("MG_UCBV_C", "1.4142"))
     budget_N = int(_os.environ.get("MG_UCBV_N", "100"))
     init_batch = int(_os.environ.get("MG_UCBV_INIT", "30"))
+    # budget-scaled uniform FLOOR (graceful degradation to brute): every (f,r,gap) is seeded with
+    # max(init_batch, init_frac*N) sims. At low N the floor is small (keeps the smart-allocation edge);
+    # at high N the floor approaches brute's per-estimate N, so coverage -> uniform and ucbv can't lose
+    # to brute at high budget. init_frac=0 recovers the old constant-init_batch behaviour.
+    init_frac = float(_os.environ.get("MG_UCBV_INITFRAC", "0"))
     batch = int(_os.environ.get("MG_UCBV_BATCH", "20"))
     do_freeze = _os.environ.get("MG_UCBV_FREEZE", "1") == "1"
     topk = int(_os.environ.get("MG_UCBV_TOPK", "5"))
@@ -1434,11 +1439,13 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV(
                 frozen_faults.add(f)
         return fault_best
 
-    # ---- init: seed EVERY (fault, rate, gap) uniformly (like v2b) so fault scores are comparable ----
+    # ---- init: seed EVERY (fault, rate, gap) uniformly (like v2b) so fault scores are comparable.
+    #      Floor = max(init_batch, init_frac*N), capped at N -> graceful degradation to brute at high N. ----
+    init_n = min(max(init_batch, int(round(init_frac * budget_N))), budget_N)
     for f in faults:
         for r in rates:
             for g in gaps:
-                sample(f, r, g["idx"], min(init_batch, budget_N))
+                sample(f, r, g["idx"], init_n)
     spent = sum(a["n"] for a in acc.values())
     if do_freeze:
         refreeze()
@@ -1505,6 +1512,8 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV(
         "ucbv_n_arms": n_arms,
         "ucbv_C": C,
         "ucbv_init_batch": init_batch,
+        "ucbv_init_frac": init_frac,
+        "ucbv_init_n": init_n,
         "ucbv_batch": batch,
         "ucbv_freeze": int(do_freeze),
         "ucbv_topk": topk,
