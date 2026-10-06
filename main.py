@@ -187,7 +187,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--mg_method",
         default="full",
-        choices=["full", "racing", "v1", "v1_freeze", "v2", "v2b", "ucb", "ucb_frg", "ucbv"],
+        choices=["full", "racing", "v1", "v1_freeze", "v2", "v2b", "ucb", "ucb_frg", "ucb_fr", "ucbv"],
         help="unknown-fault-rate diagnoser: 'full' (score every rate to confidence), 'racing' "
              "(paired-difference CRN racing), 'v1' (marginal-CI racing, no freezing), 'v1_freeze' "
              "(marginal-CI racing that also freezes rates that can't be a fault's best), or 'v2' "
