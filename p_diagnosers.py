@@ -2330,11 +2330,12 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_V2(
                    candidate_fault_modes, fault_rate_candidates, epsilon)
 
 
-def _wwmg_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name, observations,
-             candidate_fault_modes, fault_rate_candidates, epsilon,
-             budget_N=100, init_batch=30, batch_size=20):
-    """wwmg -- the SIMS-STUDY variant: "same total simulation budget as brute-force fixed-N, spend it
-    smarter."
+def fault_identification_non_deterministic_PO_unknown_fault_rate_WWMG(
+        debug_print, render_mode, instance_seed, ml_model_name, domain_name,
+        observations, candidate_fault_modes, fault_rate_candidates, epsilon):
+    """WWMG (Widest-Wilson-Margin-Gap) -- dedicated, HARDCODED smart-allocation diagnoser
+    (mg_method = 'wwmg'; formerly 'v2b'). SIMS-STUDY variant: "same total simulation budget as
+    brute-force fixed-N, spend it smarter."
 
     The comparison axis is TOTAL simulations. Brute-force fixed-N spends exactly N sims on EVERY
     (fault, rate, gap) estimate -> B = N * pairs * gaps. wwmg is given the SAME budget B and tries to
@@ -2362,12 +2363,13 @@ def _wwmg_run(debug_print, render_mode, instance_seed, ml_model_name, domain_nam
         does NOT collapse to a false-certain 0 the way Wald does).
     No Wald anywhere, no 1e-12 floor in the ranking."""
     import os as _os
-    budget_N = int(_os.environ.get("MG_WWMG_N", budget_N))
-    init_batch = int(_os.environ.get("MG_WWMG_INIT", init_batch))
-    batch_size = int(_os.environ.get("MG_WWMG_BATCH", batch_size))
-    ci_mode = _os.environ.get("MG_WWMG_CI", "tight")
-    gap_order_mode = _os.environ.get("MG_WWMG_GAPORDER", "spread")
-    use_jeffreys = _os.environ.get("MG_WWMG_JEFFREYS", "1") == "1"
+    # --- the only tunable: the study variable swept on the cluster ---
+    budget_N = int(_os.environ.get("MG_WWMG_N", "100"))
+    # --- hardcoded method constants (fixed for the comparison; NOT env-tunable) ---
+    init_batch = 30        # uniform warm-up sims per (fault,rate,gap)
+    batch_size = 20        # per-round batch added to a contended pair's widest-CI gap
+    ci_mode = "tight"      # L-interval half-width: quadrature (sqrt of sum of squared gap half-widths)
+    use_jeffreys = True    # rank by Jeffreys point estimate (matches brute-force)
 
     diagnosis_seed = instance_seed + SIMULATION_OFFSET
     policy = load_trained_model(domain_name, ml_model_name)
@@ -2436,7 +2438,7 @@ def _wwmg_run(debug_print, render_mode, instance_seed, ml_model_name, domain_nam
 
     def pair_interval(f, r):
         """(L_point, L_lo, L_hi) over ALL gaps. L_point uses the Jeffreys point; the half-width uses
-        the Wilson interval, TIGHT (quadrature) by default or LOOSE (sum) under MG_WWMG_CI=loose."""
+        the Wilson interval, combined TIGHT (quadrature: sqrt of sum of squared per-gap half-widths)."""
         Lp = 0.0; loose = 0.0; sq = 0.0
         for g in gaps:
             a = acc[(f, r, g["idx"])]
@@ -2562,16 +2564,6 @@ def _wwmg_run(debug_print, render_mode, instance_seed, ml_model_name, domain_nam
           f"rounds={num_rounds} frozen_rates={len(frozen_rates)}/{n_pairs} "
           f"decided_faults={len(decided_faults)}/{len(faults)} jeffreys={use_jeffreys} ci={ci_mode} =====")
     return output
-
-
-def fault_identification_non_deterministic_PO_unknown_fault_rate_WWMG(
-        debug_print, render_mode, instance_seed, ml_model_name, domain_name,
-        observations, candidate_fault_modes, fault_rate_candidates, epsilon):
-    """wwmg: the sims-study variant -- same total simulation budget as brute-force fixed-N
-    (B = MG_WWMG_N * pairs * gaps), spent non-uniformly to beat brute-force rank at equal sims.
-    Ranks by the same Jeffreys point estimate as brute force. See _wwmg_run."""
-    return _wwmg_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name, observations,
-                    candidate_fault_modes, fault_rate_candidates, epsilon)
 
 
 def fault_identification_non_deterministic_PO(
