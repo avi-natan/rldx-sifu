@@ -16,7 +16,7 @@ from p_diagnosers import diagnosers, SIF, SN, W, SIFU, SIFU2, SIFU3, SIFU4, SIFU
     fault_identification_non_deterministic_PO_unknown_fault_rate_V1, \
     fault_identification_non_deterministic_PO_unknown_fault_rate_V1_FREEZE, \
     fault_identification_non_deterministic_PO_unknown_fault_rate_V2, \
-    fault_identification_non_deterministic_PO_unknown_fault_rate_V2B, \
+    fault_identification_non_deterministic_PO_unknown_fault_rate_WWMG, \
     fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FRG, \
     fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR, \
     fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV
@@ -842,7 +842,7 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
     _ufr_fns = {"v1": fault_identification_non_deterministic_PO_unknown_fault_rate_V1,
                 "v1_freeze": fault_identification_non_deterministic_PO_unknown_fault_rate_V1_FREEZE,
                 "v2": fault_identification_non_deterministic_PO_unknown_fault_rate_V2,
-                "v2b": fault_identification_non_deterministic_PO_unknown_fault_rate_V2B,
+                "wwmg": fault_identification_non_deterministic_PO_unknown_fault_rate_WWMG,
                 "ucb": fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FRG,
                 "ucb_frg": fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FRG,
                 "ucb_fr": fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR,

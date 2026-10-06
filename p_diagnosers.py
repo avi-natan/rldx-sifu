@@ -796,7 +796,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
     #    brute-force-quality estimates (fixes racing's under-sampling rank ceiling).
     # #2 RANKDIFF: order the top-K by a CRN pairwise-difference tournament (low-variance) instead
     #    of noisy absolute scores.
-    # JEFFREYS: rank with the (hits+0.5)/(n+1) point estimate (matches brute-force/v2b, no 1e-12 floor).
+    # JEFFREYS: rank with the (hits+0.5)/(n+1) point estimate (matches brute-force/wwmg, no 1e-12 floor).
     reinvest_top = _os.environ.get("MG_RACING_REINVEST", "0") == "1"
     rank_bydiff = _os.environ.get("MG_RACING_RANKDIFF", "0") == "1"
     topk_protect = int(_os.environ.get("MG_RACING_TOPK", "5"))
@@ -1109,23 +1109,23 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FRG(
       0. INIT   -- pull every (fault,rate,gap) arm INIT_BATCH times (uniform warm-up; gives each arm a
                    first estimate and makes all faults score over the same gaps -> comparable).
       1. LOOP   -- while budget remains: pull the single LIVE arm with the largest UCB, add BATCH sims,
-                   then re-run FREEZE (after EVERY pull). FREEZE has two parts, IDENTICAL to v2b:
+                   then re-run FREEZE (after EVERY pull). FREEZE has two parts, IDENTICAL to wwmg:
                      (a) RATE freeze    -- a rate whose L-interval upper end is below another live
                          rate's lower end can't be that fault's best rate -> stop refining it; and
                      (b) FAULT freeze (neighbour separation) -- rank faults by score; a fault is
                          "decided" (frozen) once it is separated from BOTH its ranking neighbours
                          (its low > the next fault's high, AND the previous fault's low > its high).
       2. RANK   -- each fault scored by its best rate's Jeffreys log-likelihood summed over all gaps,
-                   sorted descending. IDENTICAL scoring to brute-force / v2b; only ALLOCATION differs.
+                   sorted descending. IDENTICAL scoring to brute-force / wwmg; only ALLOCATION differs.
 
     Estimators: Jeffreys point (hits+0.5)/(n+1) for ranking (boundary-safe, no 1e-12 floor); 95% Wilson
     score interval for the freeze intervals. Per-gap Common-Random-Numbers seeding (base + i*MAX_STATES).
 
     HARDCODED method constants (fixed for the whole comparison; NOT env-tunable):
         INIT_BATCH = 30                        uniform warm-up sims per arm
-        FREEZE     = True                      prune dominated rates + decide faults (v2b neighbour
+        FREEZE     = True                      prune dominated rates + decide faults (wwmg neighbour
                                                rule); re-run after EVERY pull (no recheck knob)
-        BATCH      = 100 if N>=200 else 20      pull size (matches brute/v2b batch convention)
+        BATCH      = 100 if N>=200 else 20      pull size (matches brute/wwmg batch convention)
     Only the two STUDY VARIABLES are read from the environment:
         MG_UCB_FRG_C   exploration constant C   (sweep: {0.25,0.5,1.0,1.414,2.0,3.0,4.0})
         MG_UCB_FRG_N   per-estimate budget N    (sweep: {50,100,200,400,800})
@@ -1204,7 +1204,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FRG(
         return Lp, Lp - H, Lp + H
 
     frozen_rates = set()      # (fault, rate) pairs proven not to be their fault's best rate
-    decided_faults = set()    # faults whose rank is locked vs BOTH neighbours (frozen; v2b rule)
+    decided_faults = set()    # faults whose rank is locked vs BOTH neighbours (frozen; wwmg rule)
 
     def fault_score(f):
         """(L_point, L_lo, L_hi, best_rate) for a fault at its best live rate."""
@@ -1218,7 +1218,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FRG(
 
     def refreeze_decide():
         """Freeze dominated rates; decide (freeze) faults whose rank is fixed vs both neighbours.
-        IDENTICAL rule to v2b's refreeze_decide. Returns the still-undecided fault set."""
+        IDENTICAL rule to wwmg's refreeze_decide. Returns the still-undecided fault set."""
         # (a) RATE freeze: a rate whose interval upper end is below another live rate's low end
         for f in faults:
             if f in decided_faults:
@@ -1278,7 +1278,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FRG(
         if do_freeze and picks % recheck == 0:
             refreeze_decide()
 
-    # ---- rank by best-rate Jeffreys logL over all gaps (same scoring as brute-force/v2b) ----
+    # ---- rank by best-rate Jeffreys logL over all gaps (same scoring as brute-force/wwmg) ----
     def L_point(f, r):
         return sum(math.log(jeff(acc[(f, r, g["idx"])])) for g in gaps)
     log_prob_total_per_fault_and_rate = {f: {r: L_point(f, r) for r in rates} for f in faults}
@@ -1335,12 +1335,12 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR(
         debug_print, render_mode, instance_seed, ml_model_name, domain_name,
         observations, candidate_fault_modes, fault_rate_candidates, epsilon):
     """UCB VARIANT 2 -- ARM = (fault, rate).  Dedicated, HARDCODED diagnoser (mg_method = 'ucb_fr').
-    The combine-v2b-and-UCB idea: a bandit over the COARSE (fault, rate) arm, with v2b's own rule for
+    The combine-wwmg-and-UCB idea: a bandit over the COARSE (fault, rate) arm, with wwmg's own rule for
     WHICH GAP to spend on. Self-contained; shares only the common infra (execute_one_trace /
     load_trained_model / make_wrapped_env / comparators).
 
     One bandit arm per (fault, rate) -- len(faults)*len(rates) arms, NOT per gap. UCB chooses which
-    PAIR to invest the next batch in; v2b's rule chooses WHICH gap of that pair to spend it on:
+    PAIR to invest the next batch in; wwmg's rule chooses WHICH gap of that pair to spend it on:
 
         UCB(f,r) = geomean_g p_jeffreys(f,r,g)  +  C * sqrt( ln(all) / n_arm )
           exploit  geomean over the pair's gaps of (hits+0.5)/(n+1)  -- a [0,1] reward (geometric mean
@@ -1352,14 +1352,14 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR(
       0. INIT   -- seed EVERY (fault, rate, gap) with INIT_BATCH sims (uniform warm-up), so every pair
                    scores L over the SAME gaps -> fault scores stay comparable. Then run FREEZE once.
       1. LOOP   -- while budget remains: pull the max-UCB LIVE arm, and add a batch to that pair's
-                   WIDEST-Wilson-CI gap (its currently most UNCERTAIN estimate -- exactly v2b's
-                   within-pair rule). Every RECHECK pulls re-run FREEZE (identical to v2b / ucb_frg):
+                   WIDEST-Wilson-CI gap (its currently most UNCERTAIN estimate -- exactly wwmg's
+                   within-pair rule). Every RECHECK pulls re-run FREEZE (identical to wwmg / ucb_frg):
                      (a) RATE freeze    -- a rate whose L-interval upper end is below another live
                          rate's lower end can't be that fault's best rate -> stop refining it; and
                      (b) FAULT freeze (neighbour separation) -- a fault is "decided" (frozen) once it
                          is separated from BOTH its ranking neighbours.
       2. RANK   -- each fault scored by its best rate's Jeffreys log-likelihood over all gaps, sorted.
-                   IDENTICAL scoring to brute-force / v2b / ucb_frg; only the ALLOCATION differs.
+                   IDENTICAL scoring to brute-force / wwmg / ucb_frg; only the ALLOCATION differs.
 
     Estimators: Jeffreys point for ranking; 95% Wilson interval for freeze + the widest-CI gap pick.
     Per-gap Common-Random-Numbers seeding (base + i*MAX_STATES). Total budget = N*faults*rates*gaps
@@ -1446,7 +1446,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR(
     def arm_total_n(f, r):
         return sum(acc[(f, r, g["idx"])]["n"] for g in gaps)
 
-    def pick_gap(f, r):   # v2b rule: the pair's widest-Wilson-CI (most uncertain) gap, log-space
+    def pick_gap(f, r):   # wwmg rule: the pair's widest-Wilson-CI (most uncertain) gap, log-space
         return max((g["idx"] for g in gaps),
                    key=lambda gi: gap_logwidth(acc[(f, r, gi)]))
 
@@ -1462,7 +1462,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR(
         return Lp, Lp - H, Lp + H
 
     frozen_rates = set()      # (fault, rate) pairs proven not to be their fault's best rate
-    decided_faults = set()    # faults whose rank is locked vs BOTH neighbours (frozen; v2b rule)
+    decided_faults = set()    # faults whose rank is locked vs BOTH neighbours (frozen; wwmg rule)
 
     def fault_score(f):
         live = [r for r in rates if (f, r) not in frozen_rates] or rates
@@ -1531,7 +1531,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR(
         if do_freeze and picks % recheck == 0:
             refreeze_decide()
 
-    # ---- rank by best-rate Jeffreys logL over all gaps (same scoring as brute/v2b/ucb_frg) ----
+    # ---- rank by best-rate Jeffreys logL over all gaps (same scoring as brute/wwmg/ucb_frg) ----
     def L_point(f, r):
         return sum(math.log(jeff(acc[(f, r, g["idx"])])) for g in gaps)
     log_prob_total_per_fault_and_rate = {f: {r: L_point(f, r) for r in rates} for f in faults}
@@ -1585,28 +1585,28 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR(
 def fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV(
         debug_print, render_mode, instance_seed, ml_model_name, domain_name,
         observations, candidate_fault_modes, fault_rate_candidates, epsilon):
-    """UNKNOWN-fault-rate diagnosis by UCB over COARSE arms + v2b-style within-arm spend (ucbv).
+    """UNKNOWN-fault-rate diagnosis by UCB over COARSE arms + wwmg-style within-arm spend (ucbv).
 
-    The combine-v2b-and-UCB idea: the ARM is a (fault, rate) -- NOT (fault, rate, gap). UCB chooses
-    WHICH (fault, rate) to invest the next batch in; v2b's own rule chooses WHICH GAP of that pair to
-    spend it on. So the bandit focuses budget on the promising fault-rates (instead of v2b spreading
-    uniformly across every contended pair each round), while gap allocation stays v2b-principled.
+    The combine-wwmg-and-UCB idea: the ARM is a (fault, rate) -- NOT (fault, rate, gap). UCB chooses
+    WHICH (fault, rate) to invest the next batch in; wwmg's own rule chooses WHICH GAP of that pair to
+    spend it on. So the bandit focuses budget on the promising fault-rates (instead of wwmg spreading
+    uniformly across every contended pair each round), while gap allocation stays wwmg-principled.
 
         UCB(arm) = geomean_g p_jeffreys(f,r,g)  +  C * sqrt( ln(all) / n_arm )
       * exploit  geomean over gaps of (hits+0.5)/(n+1)  -- a [0,1] reward (geometric mean of per-gap
                  Jeffreys hit-rates).
       * explore  C * sqrt(ln(all)/n_arm)  -- all = total sims, n_arm = sims over ALL of this arm's gaps.
-    INIT seeds EVERY (fault, rate, gap) with init_batch (like v2b) so every pair scores L over the SAME
+    INIT seeds EVERY (fault, rate, gap) with init_batch (like wwmg) so every pair scores L over the SAME
     gaps -> fault scores stay comparable. Then each round pulls the max-UCB LIVE arm and adds a batch to
     ONE of its gaps chosen by MG_UCBV_GAPMODE:
       * "ci"     (default) -- the WIDEST-Wilson-CI gap in log-space, i.e. the pair's currently most
-                              UNCERTAIN estimate. This is exactly v2b's within-pair rule (put sims where
+                              UNCERTAIN estimate. This is exactly wwmg's within-pair rule (put sims where
                               the estimate most limits the ranking).
       * "length" -- the longest hidden-span gap (fixed; ignores current uncertainty).
       * "even"   -- least-sampled gap (round-robin).
     FREEZE (default on) drops a rate that can't be its fault's best, and a fault confidently outside the
     top-K. Ranking (end): each fault's best-rate Jeffreys log-likelihood over ALL gaps, sorted -- IDENTICAL
-    scoring to brute-force/v2b, only the ALLOCATION differs. Total budget = N * faults * rates * gaps
+    scoring to brute-force/wwmg, only the ALLOCATION differs. Total budget = N * faults * rates * gaps
     (equal to brute-force fixed-N), so comparisons are at equal budget.
     Knobs (env): MG_UCBV_C / MG_UCBV_N / MG_UCBV_INIT / MG_UCBV_INITFRAC / MG_UCBV_BATCH / MG_UCBV_FREEZE
                  / MG_UCBV_TOPK / MG_UCBV_GAPMODE / MG_UCBV_RECHECK."""
@@ -1690,7 +1690,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV(
         return math.log(max(hi, 1e-12)) - math.log(max(lo, 1e-12))
 
     def pick_gap(f, r):
-        if gapmode == "ci":   # v2b rule: widest Wilson CI (most uncertain) gap, log-space
+        if gapmode == "ci":   # wwmg rule: widest Wilson CI (most uncertain) gap, log-space
             return max((g["idx"] for g in gaps),
                        key=lambda gi: gap_logwidth(acc[(f, r, gi)]))
         if gapmode == "length":   # longest hidden span (fixed)
@@ -1735,7 +1735,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV(
                 frozen_faults.add(f)
         return fault_best
 
-    # ---- init: seed EVERY (fault, rate, gap) uniformly (like v2b) so fault scores are comparable.
+    # ---- init: seed EVERY (fault, rate, gap) uniformly (like wwmg) so fault scores are comparable.
     #      Floor = max(init_batch, init_frac*N), capped at N -> graceful degradation to brute at high N. ----
     init_n = min(max(init_batch, int(round(init_frac * budget_N))), budget_N)
     for f in faults:
@@ -1771,7 +1771,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV(
         if do_freeze and picks % recheck == 0:
             refreeze()
 
-    # ---- rank by best-rate Jeffreys logL over all gaps (same scoring as brute-force/v2b) ----
+    # ---- rank by best-rate Jeffreys logL over all gaps (same scoring as brute-force/wwmg) ----
     def L_point(f, r):
         return sum(math.log(jeff(acc[(f, r, g["idx"])])) for g in gaps)
     log_prob_total_per_fault_and_rate = {f: {r: L_point(f, r) for r in rates} for f in faults}
@@ -2330,14 +2330,14 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_V2(
                    candidate_fault_modes, fault_rate_candidates, epsilon)
 
 
-def _v2b_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name, observations,
+def _wwmg_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name, observations,
              candidate_fault_modes, fault_rate_candidates, epsilon,
              budget_N=100, init_batch=30, batch_size=20):
-    """v2b -- the SIMS-STUDY variant: "same total simulation budget as brute-force fixed-N, spend it
+    """wwmg -- the SIMS-STUDY variant: "same total simulation budget as brute-force fixed-N, spend it
     smarter."
 
     The comparison axis is TOTAL simulations. Brute-force fixed-N spends exactly N sims on EVERY
-    (fault, rate, gap) estimate -> B = N * pairs * gaps. v2b is given the SAME budget B and tries to
+    (fault, rate, gap) estimate -> B = N * pairs * gaps. wwmg is given the SAME budget B and tries to
     reach a better real-fault rank by allocating those sims non-uniformly:
 
       0. INIT every (fault, rate, gap) with a small uniform batch (init_batch, default 30 -- respects
@@ -2351,9 +2351,9 @@ def _v2b_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name
            * DECIDE FAULTS: a fault confidently separated from both ranking neighbours is fixed ->
              stop refining it.
          Stop when the budget B is exhausted (spend it all, like brute force) OR the ranking is fully
-         settled early (then v2b lands at FEWER sims than brute-force-N -- an even stronger result).
+         settled early (then wwmg lands at FEWER sims than brute-force-N -- an even stronger result).
       2. RANK by each fault's best-rate JEFFREYS score over all gaps -- the SAME point estimator as
-         brute-force fixed-N, so the only thing that differs between v2b and brute force is the
+         brute-force fixed-N, so the only thing that differs between wwmg and brute force is the
          ALLOCATION, never the scoring. That is what makes the rank-vs-total-sims comparison fair.
 
     Two estimator roles, deliberately separate:
@@ -2362,12 +2362,12 @@ def _v2b_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name
         does NOT collapse to a false-certain 0 the way Wald does).
     No Wald anywhere, no 1e-12 floor in the ranking."""
     import os as _os
-    budget_N = int(_os.environ.get("MG_V2B_N", budget_N))
-    init_batch = int(_os.environ.get("MG_V2B_INIT", init_batch))
-    batch_size = int(_os.environ.get("MG_V2B_BATCH", batch_size))
-    ci_mode = _os.environ.get("MG_V2B_CI", "tight")
-    gap_order_mode = _os.environ.get("MG_V2B_GAPORDER", "spread")
-    use_jeffreys = _os.environ.get("MG_V2B_JEFFREYS", "1") == "1"
+    budget_N = int(_os.environ.get("MG_WWMG_N", budget_N))
+    init_batch = int(_os.environ.get("MG_WWMG_INIT", init_batch))
+    batch_size = int(_os.environ.get("MG_WWMG_BATCH", batch_size))
+    ci_mode = _os.environ.get("MG_WWMG_CI", "tight")
+    gap_order_mode = _os.environ.get("MG_WWMG_GAPORDER", "spread")
+    use_jeffreys = _os.environ.get("MG_WWMG_JEFFREYS", "1") == "1"
 
     diagnosis_seed = instance_seed + SIMULATION_OFFSET
     policy = load_trained_model(domain_name, ml_model_name)
@@ -2436,7 +2436,7 @@ def _v2b_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name
 
     def pair_interval(f, r):
         """(L_point, L_lo, L_hi) over ALL gaps. L_point uses the Jeffreys point; the half-width uses
-        the Wilson interval, TIGHT (quadrature) by default or LOOSE (sum) under MG_V2B_CI=loose."""
+        the Wilson interval, TIGHT (quadrature) by default or LOOSE (sum) under MG_WWMG_CI=loose."""
         Lp = 0.0; loose = 0.0; sq = 0.0
         for g in gaps:
             a = acc[(f, r, g["idx"])]
@@ -2543,34 +2543,34 @@ def _v2b_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name
         "observations_len": len(observations),
         "extra_output": "",
         "total_simulations": total_traces,
-        "v2b_total_traces": total_traces,
-        "v2b_total_budget": total_budget,
-        "v2b_budget_N": budget_N,
-        "v2b_init_batch": init_batch,
-        "v2b_batch_size": batch_size,
-        "v2b_num_rounds": num_rounds,
-        "v2b_frozen_rate_pairs": len(frozen_rates),
-        "v2b_decided_faults": len(decided_faults),
-        "v2b_stop_reason": stop_reason,
-        "v2b_jeffreys": use_jeffreys,
-        "v2b_ci_mode": ci_mode,
+        "wwmg_total_traces": total_traces,
+        "wwmg_total_budget": total_budget,
+        "wwmg_budget_N": budget_N,
+        "wwmg_init_batch": init_batch,
+        "wwmg_batch_size": batch_size,
+        "wwmg_num_rounds": num_rounds,
+        "wwmg_frozen_rate_pairs": len(frozen_rates),
+        "wwmg_decided_faults": len(decided_faults),
+        "wwmg_stop_reason": stop_reason,
+        "wwmg_jeffreys": use_jeffreys,
+        "wwmg_ci_mode": ci_mode,
         "adaptive_total_calls": len(acc),
         "adaptive_avg_real_tries": total_traces / len(acc) if acc else 0,
         "sims_avg": total_traces / len(acc) if acc else 0,
     }
-    print(f"\n===== V2B done: stop={stop_reason} N={budget_N} sims={total_traces}/{total_budget} "
+    print(f"\n===== WWMG done: stop={stop_reason} N={budget_N} sims={total_traces}/{total_budget} "
           f"rounds={num_rounds} frozen_rates={len(frozen_rates)}/{n_pairs} "
           f"decided_faults={len(decided_faults)}/{len(faults)} jeffreys={use_jeffreys} ci={ci_mode} =====")
     return output
 
 
-def fault_identification_non_deterministic_PO_unknown_fault_rate_V2B(
+def fault_identification_non_deterministic_PO_unknown_fault_rate_WWMG(
         debug_print, render_mode, instance_seed, ml_model_name, domain_name,
         observations, candidate_fault_modes, fault_rate_candidates, epsilon):
-    """v2b: the sims-study variant -- same total simulation budget as brute-force fixed-N
-    (B = MG_V2B_N * pairs * gaps), spent non-uniformly to beat brute-force rank at equal sims.
-    Ranks by the same Jeffreys point estimate as brute force. See _v2b_run."""
-    return _v2b_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name, observations,
+    """wwmg: the sims-study variant -- same total simulation budget as brute-force fixed-N
+    (B = MG_WWMG_N * pairs * gaps), spent non-uniformly to beat brute-force rank at equal sims.
+    Ranks by the same Jeffreys point estimate as brute force. See _wwmg_run."""
+    return _wwmg_run(debug_print, render_mode, instance_seed, ml_model_name, domain_name, observations,
                     candidate_fault_modes, fault_rate_candidates, epsilon)
 
 
