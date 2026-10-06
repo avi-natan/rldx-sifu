@@ -1138,6 +1138,10 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FRG(
     init_batch = 30
     do_freeze = True
     batch = 100 if budget_N >= 200 else 20
+    # refreeze cadence: re-run FREEZE every `recheck` pulls (default 20, matching the fast prior
+    # adaptive runs). refreeze is O(faults*rates*gaps) per call, so for many-gap instances doing it
+    # every single pull (recheck=1) is costly; 20 keeps the overhead low. Fixed for the study.
+    recheck = int(_os.environ.get("MG_UCB_FRG_RECHECK", "20"))
 
     diagnosis_seed = instance_seed + SIMULATION_OFFSET
     policy = load_trained_model(domain_name, ml_model_name)
@@ -1249,7 +1253,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FRG(
     if do_freeze:
         refreeze_decide()
 
-    # ---- UCB loop (re-run FREEZE after every pull; no recheck cadence) ----
+    # ---- UCB loop (re-run FREEZE every `recheck` pulls) ----
     picks = 0; stop_reason = "budget"
     while spent < total_budget:
         all_n = spent
@@ -1271,7 +1275,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FRG(
         if k <= 0:
             break
         sample(best_key[0], best_key[1], best_key[2], k); spent += k; picks += 1
-        if do_freeze:
+        if do_freeze and picks % recheck == 0:
             refreeze_decide()
 
     # ---- rank by best-rate Jeffreys logL over all gaps (same scoring as brute-force/v2b) ----
