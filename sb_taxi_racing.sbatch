@@ -34,5 +34,5 @@ mkdir -p experiment_logs/taxi_ufr
 
 python main.py --mg_method ${MG_METHOD} --epsilon ${MG_EPS} \
     ${UFR_FLAG} ${ROOT_FLAG} \
-    --mg_group ${SLURM_ARRAY_TASK_ID} --mg_num_groups 500 \
+    --mg_group ${SLURM_ARRAY_TASK_ID} --mg_num_groups ${TX_NUM_GROUPS:-500} \
     -o ${RF}

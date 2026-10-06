@@ -34,6 +34,6 @@ mkdir -p experiment_logs/frozenlake_PO
 
 python main.py --frozenlake --mg_method ${MG_METHOD} --epsilon ${MG_EPS} \
     ${UFR_FLAG} ${ROOT_FLAG} \
-    --fl_group ${SLURM_ARRAY_TASK_ID} --fl_num_groups 500 \
+    --fl_group ${SLURM_ARRAY_TASK_ID} --fl_num_groups ${FL_NUM_GROUPS:-500} \
     --fl_fault_rates ${FL_FR} \
     -o ${RF}

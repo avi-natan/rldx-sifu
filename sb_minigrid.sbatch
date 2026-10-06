@@ -69,7 +69,7 @@ python main.py \
     --mg_domain ${MG_DOMAIN} \
     --mg_method ${MG_METHOD} \
     --mg_group ${SLURM_ARRAY_TASK_ID} \
-    --mg_num_groups 390 \
+    --mg_num_groups ${MG_NUM_GROUPS:-390} \
     --mg_noise ${MG_NOISE} \
     --mg_fault_rate ${MG_FR} \
     ${ROOT_FLAG} \
