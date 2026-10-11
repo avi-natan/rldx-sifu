@@ -741,6 +741,197 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate(
     return output
 
 
+def fault_identification_non_deterministic_PO_unknown_fault_rate_BRUTE_EVEN(
+        debug_print,
+        render_mode,
+        instance_seed,
+        ml_model_name,
+        domain_name,
+        observations,
+        candidate_fault_modes,
+        fault_rate_candidates,
+        epsilon,
+        ):
+    """DEDICATED, HARDCODED brute-force with a FIXED TOTAL budget (mentor note #3), EVEN split.
+
+    Unlike the N-per-estimate brute (the shared full diagnoser driven by MG_FIXED_TRIES=N), this one
+    fixes the TOTAL number of simulations per instance at ~B, INDEPENDENT of trajectory length, by
+    splitting B evenly across every (fault, rate, gap) estimate:
+        G  = number of gaps in THIS trajectory
+        num_estimates = F * R * G        (F candidate faults, R candidate rates)
+        n  = max(1, round(B / num_estimates))     # identical sims on every estimate (no cleverness)
+    Every estimate then runs EXACTLY n simulations (min=max=n, epsilon inert), so total ~= B whatever
+    the gap-count. The only swept parameter is B, read from env MG_BRUTE_B. Everything else is baked in
+    (Jeffreys floor on, max-over-rate scoring) to match the existing brute runs. No other env knobs.
+    A separate ..._BRUTE_LENGTH function (length-weighted split) will live alongside this one.
+    """
+    import os as _os
+    B = int(_os.environ["MG_BRUTE_B"])          # total simulation budget for this instance (swept)
+    _jeffreys = True                             # hardcoded: match the existing brute (jeffreys_floor=True)
+
+    # even split: derive the per-estimate sim count from B and this trajectory's gap-count
+    F = len(candidate_fault_modes)
+    R = len(fault_rate_candidates)
+    G = sum(1 for _i in range(1, len(observations)) if observations[_i] is not None)
+    num_estimates = F * R * G
+    n_per_estimate = max(1, round(B / num_estimates)) if num_estimates else 1
+
+    diagnosis_seed = instance_seed + SIMULATION_OFFSET
+
+    policy = load_trained_model(domain_name, ml_model_name)
+
+    simulator = make_wrapped_env(domain_name, render_mode)
+    initial_obs, _ = simulator.reset(seed=instance_seed)  # instance_seed IS the block base (slot 0)
+    S_0 = initial_obs
+    assert comparators[domain_name](observations[0], S_0)
+
+    assert len(observations) <= MAX_STATES, (
+        f"trajectory length {len(observations)} exceeds MAX_STATES {MAX_STATES}; "
+        f"raise MAX_STATES in h_consts.")
+
+    diagnosis_time_sec_start = time.time()
+
+    fault_prob_hat_for_step_and_rate = {}
+    last_observed_index = 0
+    gap_times = []
+    num_gaps = 0
+    num_of_observed_states = 1
+    adaptive_stats = []
+    sims_per_gap = []
+    sims_per_pair = {}
+
+    for i in range(1, len(observations)):
+
+        if observations[i] is None:
+            continue
+
+        fault_prob_hat_for_step_and_rate[i] = {}
+        num_of_observed_states += 1
+        current_gap_length = i - last_observed_index
+
+        # EVEN split: every estimate gets exactly n_per_estimate sims (epsilon inert, no gap scaling)
+        min_tries = n_per_estimate
+        max_tries = n_per_estimate
+        this_batch = min(50, n_per_estimate)
+        this_epsilon = -1.0
+
+        current_gap_seed = diagnosis_seed + last_observed_index
+        top_seed_offset_during_iterations = (max_tries + 50) * MAX_STATES
+        assert current_gap_seed + top_seed_offset_during_iterations < instance_seed + SEED_BLOCK, (
+            f"MC seeds overflow this instance's block (B={B}, n={n_per_estimate}, "
+            f"MAX_STATES={MAX_STATES}). Increase SEED_BLOCK.")
+
+        gap_start_time = time.time()
+        gap_sims_total = 0
+
+        for curr_fault_rate in fault_rate_candidates:
+            fault_prob_hat_for_step_and_rate[i][curr_fault_rate] = {}
+            for curr_fault_key in candidate_fault_modes:
+                res = simulate_m_traces_adaptive_monte_carlo(
+                    observations[last_observed_index],
+                    observations[i],
+                    current_gap_length,
+                    candidate_fault_modes[curr_fault_key],
+                    curr_fault_rate,
+                    domain_name,
+                    current_gap_seed,
+                    simulator,
+                    policy,
+                    comparators[domain_name],
+                    debug_print,
+                    min_tries=min_tries,
+                    max_tries=max_tries,
+                    batch_size=this_batch,
+                    epsilon=this_epsilon
+                )
+                if _jeffreys:
+                    p_hat = (res["num_of_hits"] + 0.5) / (res["num_of_tries"] + 1)
+                else:
+                    p_hat = max(res["p_hat"], 1e-12)
+                fault_prob_hat_for_step_and_rate[i][curr_fault_rate][curr_fault_key] = p_hat
+                adaptive_stats.append(res)
+                n_sims = res["num_of_tries"]
+                gap_sims_total += n_sims
+                pair_key = f"{curr_fault_key}|{curr_fault_rate}"
+                sims_per_pair[pair_key] = sims_per_pair.get(pair_key, 0) + n_sims
+
+        gap_end_time = time.time()
+        gap_times.append(gap_end_time - gap_start_time)
+        sims_per_gap.append(gap_sims_total)
+        num_gaps += 1
+        last_observed_index = i
+
+    # ----- log likelihood per (fault, rate), then MAX over rate (matches existing brute) -----
+    log_prob_total_per_fault_and_rate = {}
+    for f in candidate_fault_modes:
+        log_prob_total_per_fault_and_rate[f] = {}
+        for curr_fault_rate in fault_rate_candidates:
+            log_prob = 0.0
+            for i in range(1, len(observations)):
+                if observations[i] is None:
+                    continue
+                p = fault_prob_hat_for_step_and_rate[i][curr_fault_rate][f]
+                log_prob += math.log(p)
+            log_prob_total_per_fault_and_rate[f][curr_fault_rate] = log_prob
+
+    best_logL_per_fault = {}
+    best_rate_per_fault = {}
+    for f in candidate_fault_modes:
+        best_rate = max(fault_rate_candidates, key=lambda r: log_prob_total_per_fault_and_rate[f][r])
+        best_rate_per_fault[f] = best_rate
+        best_logL_per_fault[f] = log_prob_total_per_fault_and_rate[f][best_rate]
+
+    sorted_faults = sorted(best_logL_per_fault.items(), key=lambda x: x[1], reverse=True)
+    T = num_of_observed_states - 1
+    sorted_faults_geo = [(fault, math.exp(logL / T)) for fault, logL in sorted_faults]
+
+    extra_output = ""
+    for fault, logL in sorted_faults:
+        rate = best_rate_per_fault[fault]
+        extra_output += (f"Fault: {fault}, logL: {logL:.6f}, Best Estimated Rate: {rate}\n")
+
+    diagnosis_time_sec = time.time() - diagnosis_time_sec_start
+    avg_gap_time = sum(gap_times) / len(gap_times) if gap_times else 0.0
+
+    output = {}
+    output["diagnosis_time_sec"] = diagnosis_time_sec
+    output["diagnosis_time_ms"] = diagnosis_time_sec * 1000
+    output["avg_gap_time"] = avg_gap_time
+    output["num_gaps"] = num_gaps
+    output["sorted_faults"] = sorted_faults
+    output["sorted_faults_with_exp_val"] = sorted_faults_geo
+    output["best_rate_per_fault"] = best_rate_per_fault
+    output["log_prob_total_per_fault_and_rate"] = log_prob_total_per_fault_and_rate
+    output["fault_rate_candidates"] = fault_rate_candidates
+    output["observations"] = observations
+    output["observations_len"] = len(observations)
+    output["extra_output"] = extra_output
+
+    total_calls = len(adaptive_stats)
+    avg_tries = sum(s["num_of_tries"] for s in adaptive_stats) / total_calls if total_calls else 0
+    output["adaptive_total_calls"] = total_calls
+    output["adaptive_avg_real_tries"] = avg_tries
+
+    import json as _json
+    all_tries = [s["num_of_tries"] for s in adaptive_stats]
+    output["jeffreys_floor"] = _jeffreys
+    output["total_simulations"] = sum(all_tries)
+    output["sims_count"] = len(all_tries)
+    output["sims_avg"] = (sum(all_tries) / len(all_tries)) if all_tries else 0
+    output["sims_min"] = min(all_tries) if all_tries else 0
+    output["sims_max"] = max(all_tries) if all_tries else 0
+    output["sims_per_gap"] = _json.dumps(sims_per_gap)
+    output["sims_per_pair"] = _json.dumps(sims_per_pair)
+
+    # ---- total-budget brute fields (even split) ----
+    output["budget_total_requested"] = B
+    output["budget_split"] = "even"
+    output["budget_per_estimate_n"] = n_per_estimate
+    output["budget_num_estimates"] = num_estimates
+
+    return output
+
+
 def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
         debug_print,
         render_mode,
@@ -1086,6 +1277,274 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
           f"traces={total_traces} (cap-baseline {full_baseline_traces}, "
           f"~{output['racing_trace_speedup_vs_cap']:.1f}x) frozen_rates={len(frozen_rate)}/"
           f"{len(faults)*len(rates)} =====")
+    return output
+
+
+def fault_identification_non_deterministic_PO_unknown_fault_rate_RACE(
+        debug_print, render_mode, instance_seed, ml_model_name, domain_name,
+        observations, candidate_fault_modes, fault_rate_candidates, epsilon):
+    """RACE -- dedicated, HARDCODED fixed-CONFIDENCE racing diagnoser (mg_method='race').
+
+    Produces a FULL ranking of all faults (nothing is discarded); it spends traces only to resolve
+    the adjacent boundaries whose order isn't yet confident. Fixed-CONFIDENCE: the ONLY stop is
+    confidence (every adjacent pair confidently DECIDED or confidently TIED) -- so total sims VARY per
+    instance (that is the comparison axis vs brute/wwmg/ucb, not a fixed N).
+
+    ARM = a fault; score L(f) = max over (live) rate of sum_gaps log p_jeffreys(f,r,g).
+
+    CRN paired difference (the whole point): since trace i of a gap uses the same seed for every fault
+    (seed depends on gap+index only), fault A and B are simulated under identical randomness. The
+    decision for a pair uses the PAIRED difference D = L(A)-L(B) whose variance is shrunk by the
+    co-hit covariance:  var_g = (1-a)/(a n) + (1-b)/(b n) - 2(pab - a b)/(a b n). Far fewer traces to
+    get the SIGN of D than to pin each absolute L.
+
+    Procedure:
+      0. HONEST INIT -- seed every (fault,rate,gap) with INIT traces (so no rate/fault is judged on noise).
+      1. RACE (to confidence): rank faults by best-rate L; for each ADJACENT pair (A,B):
+           decided if A confidently above B (D - half > 0) OR a confident tie (half < tie_margin);
+           else UNDECIDED -> refine:
+             * DECISION (heavy): sample A@bestRate and B@bestRate on the gap with the largest paired
+               var_g (the gap limiting the decision) -- batch_dec.
+             * KEEP-ALIVE (light): every still-LIVE non-best rate of A and of B gets a small batch on
+               ITS OWN widest-Wilson-CI gap -- batch_keep -- so a truly-best-but-unlucky rate can climb.
+             * FREEZE a rate only when its L-interval is confidently below another live rate's low end.
+         Hopeless faults (0 hits everywhere) are treated as genuine ties so they don't block the stop.
+         A pair whose decision gaps are all at the safety cap is treated as resolved (can't refine further).
+      2. RANK by each fault's best-rate Jeffreys L -> real_fault_rank. Same scorer as brute/wwmg/ucb.
+
+    INPUT (env):  MG_RACE_CONF (confidence, default 0.95; sweep 0.95/0.97),
+                  MG_RACE_INIT (honest init per (f,r,gap), default 50).
+    HARDCODED:    batch_dec=20, batch_keep=10, tie_margin=0.05, per-estimate safety cap=2000,
+                  Jeffreys ranking, CRN paired var_g decision gap, within-fault rate-freeze."""
+    import os as _os
+    confidence = float(_os.environ.get("MG_RACE_CONF", "0.95"))
+    init_batch = int(_os.environ.get("MG_RACE_INIT", "50"))
+    # hardcoded method constants
+    batch_dec = 20       # heavy batch: best-rate decision sampling on the max-var_g gap
+    batch_keep = 10      # light batch: keep-alive for each live non-best rate on its widest-CI gap
+    tie_margin = 0.05    # a pair with half-width < this (in log-L) is a CONFIDENT tie -> resolved
+    max_tries_cap = 2000 # per-(f,r,gap) safety cap so genuine ties can't spin forever
+    try:
+        from statistics import NormalDist as _ND
+        z = _ND().inv_cdf(1.0 - (1.0 - confidence) / 2.0)
+    except Exception:
+        z = 1.96 if confidence <= 0.95 else 2.576
+
+    diagnosis_seed = instance_seed + SIMULATION_OFFSET
+    policy = load_trained_model(domain_name, ml_model_name)
+    simulator = make_wrapped_env(domain_name, render_mode)
+    initial_obs, _ = simulator.reset(seed=instance_seed)
+    assert comparators[domain_name](observations[0], initial_obs)
+    comparator = comparators[domain_name]
+    t0 = time.time()
+
+    faults = list(candidate_fault_modes.keys())
+    rates = list(fault_rate_candidates)
+    gaps = []
+    last = 0
+    for i in range(1, len(observations)):
+        if observations[i] is None:
+            continue
+        gaps.append({"idx": len(gaps), "start": observations[last], "end": observations[i],
+                     "length": i - last, "seed": diagnosis_seed + last})
+        last = i
+    G = max(len(gaps), 1)
+    _EPS = 1e-6
+
+    H = {(f, r, g["idx"]): [] for f in faults for r in rates for g in gaps}
+
+    def sample(f, r, gidx, n):
+        a = H[(f, r, gidx)]; g = gaps[gidx]; fm = candidate_fault_modes[f]
+        base = g["seed"]; rng = random.Random()
+        for i in range(len(a), len(a) + n):
+            s = base + i * MAX_STATES
+            rng.seed(s)
+            nxt = execute_one_trace(g["start"], g["length"], fm, r, domain_name, s, rng,
+                                    simulator, policy, False)
+            a.append(1 if comparator(nxt, g["end"]) else 0)
+
+    def jeff_p(f, r, gi):
+        a = H[(f, r, gi)]; n = len(a)
+        return (sum(a) + 0.5) / (n + 1.0) if n > 0 else 0.5
+
+    def phat(f, r, gi):
+        a = H[(f, r, gi)]
+        return (sum(a) / len(a)) if a else _EPS
+
+    def L_point(f, r):
+        return sum(math.log(jeff_p(f, r, g["idx"])) for g in gaps)
+
+    def wilson_lohi(a):
+        n = len(a)
+        if n == 0:
+            return 1e-12, 1.0
+        zz = 1.96; p = sum(a) / n; den = 1.0 + zz * zz / n
+        c = (p + zz * zz / (2 * n)) / den
+        hw = (zz / den) * math.sqrt(p * (1 - p) / n + zz * zz / (4 * n * n))
+        return max(c - hw, 1e-12), min(c + hw, 1.0)
+
+    def gap_logwidth(f, r, gi):
+        lo, hi = wilson_lohi(H[(f, r, gi)])
+        return math.log(max(hi, 1e-12)) - math.log(max(lo, 1e-12))
+
+    frozen = set()  # (f, r) rates proven not to be their fault's best
+
+    def rate_interval(f, r):
+        Lp = 0.0; sq = 0.0
+        for g in gaps:
+            gi = g["idx"]
+            Lp += math.log(jeff_p(f, r, gi))
+            lo, hi = wilson_lohi(H[(f, r, gi)])
+            hw = 0.5 * (math.log(max(hi, 1e-12)) - math.log(max(lo, 1e-12)))
+            sq += hw * hw
+        H_ = math.sqrt(sq)
+        return Lp, Lp - H_, Lp + H_
+
+    def live_rates(f):
+        return [r for r in rates if (f, r) not in frozen] or rates
+
+    def best_rate(f):
+        return max(live_rates(f), key=lambda r: L_point(f, r))
+
+    def refreeze_rates(f):
+        lr = [r for r in rates if (f, r) not in frozen]
+        if len(lr) <= 1:
+            return
+        ivs = {r: rate_interval(f, r) for r in lr}
+        best_low = max(ivs[r][1] for r in lr)
+        for r in lr:
+            if ivs[r][2] < best_low:
+                frozen.add((f, r))
+
+    def diff_decision(A, rA, B, rB):
+        """(D, half) for D = L(A,rA) - L(B,rB), using the CRN paired variance (the -2cov term)."""
+        D = 0.0; var = 0.0
+        for g in gaps:
+            gi = g["idx"]
+            Xa = H[(A, rA, gi)]; Yb = H[(B, rB, gi)]
+            n = min(len(Xa), len(Yb))
+            if n == 0:
+                return 0.0, float("inf")
+            xa = np.frombuffer(bytes(Xa[:n]), dtype=np.uint8)
+            yb = np.frombuffer(bytes(Yb[:n]), dtype=np.uint8)
+            a = min(max(xa.mean(), _EPS), 1.0 - 1e-9)
+            b = min(max(yb.mean(), _EPS), 1.0 - 1e-9)
+            pab = float(np.dot(xa, yb)) / n
+            D += math.log(a) - math.log(b)
+            var += (1 - a) / (a * n) + (1 - b) / (b * n) - 2.0 * (pab - a * b) / (a * b * n)
+        return D, z * math.sqrt(max(var, 0.0))
+
+    def max_vargap(A, rA, B, rB):
+        """The gap with the largest marginal variance of the paired difference, skipping capped gaps."""
+        best_g, best_v = None, -1.0
+        for g in gaps:
+            gi = g["idx"]
+            nmin = min(len(H[(A, rA, gi)]), len(H[(B, rB, gi)]))
+            if nmin >= max_tries_cap:
+                continue
+            nn = max(nmin, 1)
+            a = min(max(phat(A, rA, gi), _EPS), 1.0 - 1e-9)
+            b = min(max(phat(B, rB, gi), _EPS), 1.0 - 1e-9)
+            v = (1 - a) / (a * nn) + (1 - b) / (b * nn)
+            if v > best_v:
+                best_v, best_g = v, gi
+        return best_g
+
+    def hopeless(f):
+        return all(all(sum(H[(f, r, g["idx"])]) == 0 for g in gaps) for r in rates)
+
+    # 0. HONEST INIT
+    for f in faults:
+        for r in rates:
+            for g in gaps:
+                sample(f, r, g["idx"], init_batch)
+    for f in faults:
+        refreeze_rates(f)
+
+    # 1. RACE to confidence
+    num_rounds = 0; stop_reason = "decided"
+    while True:
+        order = sorted(faults, key=lambda f: L_point(f, best_rate(f)), reverse=True)
+        brate = {f: best_rate(f) for f in order}
+        hop = {f: hopeless(f) for f in faults}
+        undecided = []
+        for k in range(len(order) - 1):
+            A, B = order[k], order[k + 1]
+            if hop[A] and hop[B]:
+                continue
+            if hop[B] and not hop[A]:
+                continue
+            D, half = diff_decision(A, brate[A], B, brate[B])
+            if (D - half > 0) or (half < tie_margin):
+                continue
+            if max_vargap(A, brate[A], B, brate[B]) is None:
+                continue  # decision gaps all at cap -> can't refine; treat as resolved
+            undecided.append((A, B))
+        if not undecided:
+            stop_reason = "decided"; break
+        did = False
+        for (A, B) in undecided:
+            gi = max_vargap(A, brate[A], B, brate[B])
+            if gi is not None:
+                sample(A, brate[A], gi, batch_dec)
+                sample(B, brate[B], gi, batch_dec)
+                did = True
+            for F in (A, B):
+                bf = brate[F]
+                for r in live_rates(F):
+                    if r == bf:
+                        continue
+                    cand = [g["idx"] for g in gaps if len(H[(F, r, g["idx"])]) < max_tries_cap]
+                    if not cand:
+                        continue
+                    gk = max(cand, key=lambda gi2: gap_logwidth(F, r, gi2))
+                    sample(F, r, gk, batch_keep); did = True
+            refreeze_rates(A); refreeze_rates(B)
+        if not did:
+            stop_reason = "capped"; break
+        num_rounds += 1
+
+    # 2. RANK by best-rate Jeffreys L (same scorer as brute/wwmg/ucb)
+    log_prob_total = {f: {r: L_point(f, r) for r in rates} for f in faults}
+    best_rate_per_fault = {}; best_logL = {}
+    for f in faults:
+        br = max(rates, key=lambda r: log_prob_total[f][r])
+        best_rate_per_fault[f] = br
+        best_logL[f] = log_prob_total[f][br]
+    sorted_faults = sorted(best_logL.items(), key=lambda x: x[1], reverse=True)
+    total_traces = sum(len(v) for v in H.values())
+    T = max(G, 1)
+
+    extra_output = ""
+    for fault, logL in sorted_faults:
+        extra_output += f"Fault: {fault}, logL: {logL:.6f}, Best Estimated Rate: {best_rate_per_fault[fault]}\n"
+
+    output = {
+        "diagnosis_time_sec": time.time() - t0,
+        "diagnosis_time_ms": (time.time() - t0) * 1000,
+        "avg_gap_time": 0.0,
+        "num_gaps": len(gaps),
+        "sorted_faults": sorted_faults,
+        "sorted_faults_with_exp_val": [(f, math.exp(L / T)) for f, L in sorted_faults],
+        "best_rate_per_fault": best_rate_per_fault,
+        "log_prob_total_per_fault_and_rate": log_prob_total,
+        "fault_rate_candidates": fault_rate_candidates,
+        "observations": observations,
+        "observations_len": len(observations),
+        "extra_output": extra_output,
+        "total_simulations": total_traces,
+        "race_total_traces": total_traces,
+        "race_confidence": confidence,
+        "race_z": z,
+        "race_init_batch": init_batch,
+        "race_num_rounds": num_rounds,
+        "race_frozen_rate_pairs": len(frozen),
+        "race_stop_reason": stop_reason,
+        "adaptive_total_calls": len(H),
+        "adaptive_avg_real_tries": total_traces / len(H) if H else 0,
+    }
+    print(f"\n===== RACE done: stop={stop_reason} conf={confidence} init={init_batch} rounds={num_rounds} "
+          f"traces={total_traces} frozen_rates={len(frozen)}/{len(faults) * len(rates)} =====")
     return output
 
 

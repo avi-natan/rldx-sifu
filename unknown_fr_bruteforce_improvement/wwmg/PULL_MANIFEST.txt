@@ -1,0 +1,59 @@
+===============================================================================
+ PULL MANIFEST  --  wwmg sweep (mg_method=wwmg)   [TEMP file; delete after pulling]
+ Written 2026-10-06 while the sweep was running (alongside the ucb_fr tail).
+ Purpose: exactly which cluster paths to pull when wwmg is 100% done, with NO overlap
+          with ucb_fr (which shares the SLURM log dirs).
+===============================================================================
+
+CLUSTER REPO ROOT:  ~/rldx_repo/rldx-sifu   (on bgu / slurm.bgu.ac.il)
+
+-------------------------------------------------------------------------------
+A) XLSX RESULTS   (SAFE -- self-contained folder, cannot overlap ucb_fr)
+-------------------------------------------------------------------------------
+SOURCE (cluster):   ~/rldx_repo/rldx-sifu/unknown_fr_bruteforce_improvement/wwmg/
+DEST   (local):     <repo>/unknown_fr_bruteforce_improvement/wwmg/
+
+  -> this whole tree is ONLY wwmg output. ucb_fr writes to a DIFFERENT folder
+     (unknown_fr_bruteforce_improvement/ucb_fr_arm/), so no risk of mixing.
+  20 cells (4 domains x N{50,100,200,400,800}; NO C -- wwmg is not a bandit), each with xlsx/:
+     FrozenLake_v1/N{50,100,200,400,800}/xlsx/*.xlsx                     (full = 500 rows/domain)
+     Taxi_v4/N{...}/xlsx/*.xlsx                                          (full = 500)
+     MiniGrid_Empty_16x16_v0/N{...}/xlsx/*.xlsx                          (full = 390)
+     MiniGrid_SimpleCrossing_S11N2_v0/N{...}/xlsx/*.xlsx                 (full = 390)
+  PULL:
+     cluster:  cd ~/rldx_repo/rldx-sifu/unknown_fr_bruteforce_improvement && tar czf ~/wwmg_data.tgz wwmg
+     local:    scp bgu:~/wwmg_data.tgz .  && tar xzf wwmg_data.tgz   (extract into the improvement folder)
+
+-------------------------------------------------------------------------------
+B) LOGS   (OVERLAP RISK -- shared dirs; pull ONLY by the 20 wwmg job IDs below)
+-------------------------------------------------------------------------------
+Same shared dirs as ucb_fr / ucb_frg. Filter by wwmg's array job IDs so no ucb_fr / ucb_frg
+.out files are pulled by mistake.
+
+  LOG DIRS (cluster), by domain:
+     FrozenLake  ->  experiment_logs/frozenlake_PO/task-<JOBID>_*.out
+     Taxi        ->  experiment_logs/taxi_ufr/task-<JOBID>_*.out
+     MiniGrid    ->  experiment_logs/minigrid_PO/task-<JOBID>_*.out
+  DEST (local):  <repo>/unknown_fr_bruteforce_improvement/wwmg/wwmg_logs.tgz
+
+  THE 20 wwmg ARRAY JOB IDs:
+     22331980 22331981 22331982 22331983 22331984 22331985 22331986
+     22332091 22332092 22332093 22332094 22332096
+     22332204 22332205 22332206 22332207 22332208 22332210 22332213
+     22332324
+
+  PULL (cluster, tar only these IDs' logs across the 3 dirs, then scp):
+     cd ~/rldx_repo/rldx-sifu/experiment_logs
+     IDS="22331980 ... 22332324"   # the 20 above
+     PATHS=""; for j in $IDS; do PATHS="$PATHS $(ls frozenlake_PO/task-${j}_*.out taxi_ufr/task-${j}_*.out minigrid_PO/task-${j}_*.out 2>/dev/null)"; done
+     tar czf ~/wwmg_logs.tgz $PATHS
+     local:  scp bgu:~/wwmg_logs.tgz ./wwmg/wwmg_logs.tgz
+
+-------------------------------------------------------------------------------
+C) OVERLAP CHECKLIST
+-------------------------------------------------------------------------------
+  [ ] wwmg 100% done: squeue shows 0 wwmg jobs; every wwmg/<domain>/N<N> cell is full
+      (FL/TX 500 rows, MiniGrid 390 rows).
+  [ ] XLSX: wwmg/ pulled as one tar -> no ucb_fr files inside (ucb_fr lives in ucb_fr_arm/).
+  [ ] LOGS: archived by the 20 wwmg job IDs ONLY -> no ucb_fr/ucb_frg task-*.out mixed in.
+===============================================================================

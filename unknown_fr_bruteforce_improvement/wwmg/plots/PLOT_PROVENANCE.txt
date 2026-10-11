@@ -1,0 +1,15 @@
+PLOT PROVENANCE
+===============
+These plots were created by : C:\Users\User\AppData\Local\Temp\claude\C--Users-User-Desktop-rldx-repo-rldx-sifu\84415725-a15b-466d-ab0a-8f8d6d80ca11\scratchpad\plot_wwmg.py
+Generated                   : 2026-10-07 13:29:06
+Command                     : C:/Users/User/AppData/Local/Temp/claude/C--Users-User-Desktop-rldx-repo-rldx-sifu/84415725-a15b-466d-ab0a-8f8d6d80ca11/scratchpad/plot_wwmg.py
+
+Plots created in this folder (C:\Users\User\Desktop\rldx_repo\rldx-sifu\unknown_fr_bruteforce_improvement\wwmg\plots):
+  - table_FrozenLake.png
+  - table_Taxi.png
+  - table_MiniGrid_Empty.png
+  - table_MiniGrid_SimpleCrossing.png
+  - wwmg_vs_brute.png
+
+Input data read from:
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\unknown_fr_bruteforce_improvement\wwmg\SUMMARY_wwmg_vs_brute.txt

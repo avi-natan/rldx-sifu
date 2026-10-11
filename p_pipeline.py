@@ -19,7 +19,9 @@ from p_diagnosers import diagnosers, SIF, SN, W, SIFU, SIFU2, SIFU3, SIFU4, SIFU
     fault_identification_non_deterministic_PO_unknown_fault_rate_WWMG, \
     fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FRG, \
     fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR, \
-    fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV
+    fault_identification_non_deterministic_PO_unknown_fault_rate_RACE, \
+    fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV, \
+    fault_identification_non_deterministic_PO_unknown_fault_rate_BRUTE_EVEN
 from p_executor import execute
 
 
@@ -846,7 +848,9 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
                 "ucb": fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FRG,
                 "ucb_frg": fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FRG,
                 "ucb_fr": fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR,
-                "ucbv": fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV}
+                "race": fault_identification_non_deterministic_PO_unknown_fault_rate_RACE,
+                "ucbv": fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV,
+                "brute_even": fault_identification_non_deterministic_PO_unknown_fault_rate_BRUTE_EVEN}
     if unknown_fault_rate and use_racing:
         raw_output = fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
             debug_print=debug_print,

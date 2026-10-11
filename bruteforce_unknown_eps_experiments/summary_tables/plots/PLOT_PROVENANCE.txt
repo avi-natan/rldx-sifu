@@ -1,0 +1,24 @@
+PLOT PROVENANCE
+===============
+These plots were created by : C:\Users\User\Desktop\rldx_repo\rldx-sifu\experimental plot scripts\plot_bruteforce_summary.py
+Generated                   : 2026-09-23 14:23:08
+Command                     : experimental plot scripts/plot_bruteforce_summary.py
+
+Plots created in this folder (C:\Users\User\Desktop\rldx_repo\rldx-sifu\bruteforce_unknown_eps_experiments\summary_tables\plots):
+  - table1_FL_eps_sweep.png
+  - table2_FL_eps_sweep_min20_b10.png
+  - table1_2_FL_eps_compare.png
+  - table3_fixedtries.png
+  - table3_efficiency_rank_vs_sims.png
+  - table4_jeffreys_vs_plain.png
+  - table4_jeffreys_delta.png
+  - table5_v2b_vs_bruteforce.png
+  - table5_v2b_delta.png
+  - table5_efficiency_rank_vs_sims.png
+
+Input data read from:
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\bruteforce_unknown_eps_experiments\summary_tables\table1_FL_epsilon_sweep.csv
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\bruteforce_unknown_eps_experiments\summary_tables\table2_FL_epsilon_sweep_min20_batch10.csv
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\bruteforce_unknown_eps_experiments\summary_tables\table3_fixedtries_all_domains.csv
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\bruteforce_unknown_eps_experiments\summary_tables\table4_jeffreys_fixedtries_vs_fixedtries.csv
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\bruteforce_unknown_eps_experiments\summary_tables\table5_v2b_vs_jeffreys_fixedtries.csv
