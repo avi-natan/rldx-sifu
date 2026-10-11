@@ -812,7 +812,7 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_BRUTE_EVEN(
         # EVEN split: every estimate gets exactly n_per_estimate sims (epsilon inert, no gap scaling)
         min_tries = n_per_estimate
         max_tries = n_per_estimate
-        this_batch = min(50, n_per_estimate)
+        this_batch = n_per_estimate   # one batch of exactly n (epsilon inert) -> no overshoot past B
         this_epsilon = -1.0
 
         current_gap_seed = diagnosis_seed + last_observed_index
@@ -927,6 +927,203 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_BRUTE_EVEN(
     output["budget_total_requested"] = B
     output["budget_split"] = "even"
     output["budget_per_estimate_n"] = n_per_estimate
+    output["budget_num_estimates"] = num_estimates
+
+    return output
+
+
+def fault_identification_non_deterministic_PO_unknown_fault_rate_BRUTE_LENGTH(
+        debug_print,
+        render_mode,
+        instance_seed,
+        ml_model_name,
+        domain_name,
+        observations,
+        candidate_fault_modes,
+        fault_rate_candidates,
+        epsilon,
+        ):
+    """DEDICATED, HARDCODED brute-force with a FIXED TOTAL budget B, split by GAP LENGTH.
+
+    Same total budget B as BRUTE_EVEN (env MG_BRUTE_B), but instead of giving every (fault,rate,gap)
+    estimate the same n, a gap of hidden length L_g gets sims proportional to its length:
+        L = sum of all gap lengths (total hidden steps)
+        n_g = max(1, round( B * L_g / (F * R * L) ))     # longer (harder, smaller-p) gaps get more
+    So each gap's estimates all run n_g sims; total ~= B (same budget, just distributed by length).
+    Rationale: the fault score is sum_g log p, and long gaps have small, noisy p that can dominate
+    that sum -- length-weighting pours sims where the estimate is hardest. Everything else matches
+    BRUTE_EVEN and the existing brute (Jeffreys floor on, max-over-rate scoring, same CRN seeding).
+    """
+    import os as _os
+    B = int(_os.environ["MG_BRUTE_B"])          # total simulation budget for this instance (swept)
+    _jeffreys = True
+
+    F = len(candidate_fault_modes)
+    R = len(fault_rate_candidates)
+    # pre-scan the gap structure: length of each hidden stretch (endpoint i where obs[i] is not None)
+    _gap_lengths = []
+    _last = 0
+    for _i in range(1, len(observations)):
+        if observations[_i] is None:
+            continue
+        _gap_lengths.append(_i - _last)
+        _last = _i
+    G = len(_gap_lengths)
+    L_total = sum(_gap_lengths) if _gap_lengths else 1
+    num_estimates = F * R * G
+
+    diagnosis_seed = instance_seed + SIMULATION_OFFSET
+
+    policy = load_trained_model(domain_name, ml_model_name)
+
+    simulator = make_wrapped_env(domain_name, render_mode)
+    initial_obs, _ = simulator.reset(seed=instance_seed)
+    S_0 = initial_obs
+    assert comparators[domain_name](observations[0], S_0)
+
+    assert len(observations) <= MAX_STATES, (
+        f"trajectory length {len(observations)} exceeds MAX_STATES {MAX_STATES}; "
+        f"raise MAX_STATES in h_consts.")
+
+    diagnosis_time_sec_start = time.time()
+
+    fault_prob_hat_for_step_and_rate = {}
+    last_observed_index = 0
+    gap_times = []
+    num_gaps = 0
+    num_of_observed_states = 1
+    adaptive_stats = []
+    sims_per_gap = []
+    sims_per_pair = {}
+
+    for i in range(1, len(observations)):
+
+        if observations[i] is None:
+            continue
+
+        fault_prob_hat_for_step_and_rate[i] = {}
+        num_of_observed_states += 1
+        current_gap_length = i - last_observed_index
+
+        # LENGTH-weighted split: this gap's per-estimate sims scale with its hidden length
+        n_this_gap = max(1, round(B * current_gap_length / (F * R * L_total)))
+        min_tries = n_this_gap
+        max_tries = n_this_gap
+        this_batch = n_this_gap   # one batch of exactly n_g (epsilon inert) -> no overshoot past B
+        this_epsilon = -1.0
+
+        current_gap_seed = diagnosis_seed + last_observed_index
+        top_seed_offset_during_iterations = (max_tries + 50) * MAX_STATES
+        assert current_gap_seed + top_seed_offset_during_iterations < instance_seed + SEED_BLOCK, (
+            f"MC seeds overflow this instance's block (B={B}, n_gap={n_this_gap}, "
+            f"MAX_STATES={MAX_STATES}). Increase SEED_BLOCK.")
+
+        gap_start_time = time.time()
+        gap_sims_total = 0
+
+        for curr_fault_rate in fault_rate_candidates:
+            fault_prob_hat_for_step_and_rate[i][curr_fault_rate] = {}
+            for curr_fault_key in candidate_fault_modes:
+                res = simulate_m_traces_adaptive_monte_carlo(
+                    observations[last_observed_index],
+                    observations[i],
+                    current_gap_length,
+                    candidate_fault_modes[curr_fault_key],
+                    curr_fault_rate,
+                    domain_name,
+                    current_gap_seed,
+                    simulator,
+                    policy,
+                    comparators[domain_name],
+                    debug_print,
+                    min_tries=min_tries,
+                    max_tries=max_tries,
+                    batch_size=this_batch,
+                    epsilon=this_epsilon
+                )
+                if _jeffreys:
+                    p_hat = (res["num_of_hits"] + 0.5) / (res["num_of_tries"] + 1)
+                else:
+                    p_hat = max(res["p_hat"], 1e-12)
+                fault_prob_hat_for_step_and_rate[i][curr_fault_rate][curr_fault_key] = p_hat
+                adaptive_stats.append(res)
+                n_sims = res["num_of_tries"]
+                gap_sims_total += n_sims
+                pair_key = f"{curr_fault_key}|{curr_fault_rate}"
+                sims_per_pair[pair_key] = sims_per_pair.get(pair_key, 0) + n_sims
+
+        gap_end_time = time.time()
+        gap_times.append(gap_end_time - gap_start_time)
+        sims_per_gap.append(gap_sims_total)
+        num_gaps += 1
+        last_observed_index = i
+
+    # ----- log likelihood per (fault, rate), then MAX over rate (matches existing brute) -----
+    log_prob_total_per_fault_and_rate = {}
+    for f in candidate_fault_modes:
+        log_prob_total_per_fault_and_rate[f] = {}
+        for curr_fault_rate in fault_rate_candidates:
+            log_prob = 0.0
+            for i in range(1, len(observations)):
+                if observations[i] is None:
+                    continue
+                p = fault_prob_hat_for_step_and_rate[i][curr_fault_rate][f]
+                log_prob += math.log(p)
+            log_prob_total_per_fault_and_rate[f][curr_fault_rate] = log_prob
+
+    best_logL_per_fault = {}
+    best_rate_per_fault = {}
+    for f in candidate_fault_modes:
+        best_rate = max(fault_rate_candidates, key=lambda r: log_prob_total_per_fault_and_rate[f][r])
+        best_rate_per_fault[f] = best_rate
+        best_logL_per_fault[f] = log_prob_total_per_fault_and_rate[f][best_rate]
+
+    sorted_faults = sorted(best_logL_per_fault.items(), key=lambda x: x[1], reverse=True)
+    T = num_of_observed_states - 1
+    sorted_faults_geo = [(fault, math.exp(logL / T)) for fault, logL in sorted_faults]
+
+    extra_output = ""
+    for fault, logL in sorted_faults:
+        rate = best_rate_per_fault[fault]
+        extra_output += (f"Fault: {fault}, logL: {logL:.6f}, Best Estimated Rate: {rate}\n")
+
+    diagnosis_time_sec = time.time() - diagnosis_time_sec_start
+    avg_gap_time = sum(gap_times) / len(gap_times) if gap_times else 0.0
+
+    output = {}
+    output["diagnosis_time_sec"] = diagnosis_time_sec
+    output["diagnosis_time_ms"] = diagnosis_time_sec * 1000
+    output["avg_gap_time"] = avg_gap_time
+    output["num_gaps"] = num_gaps
+    output["sorted_faults"] = sorted_faults
+    output["sorted_faults_with_exp_val"] = sorted_faults_geo
+    output["best_rate_per_fault"] = best_rate_per_fault
+    output["log_prob_total_per_fault_and_rate"] = log_prob_total_per_fault_and_rate
+    output["fault_rate_candidates"] = fault_rate_candidates
+    output["observations"] = observations
+    output["observations_len"] = len(observations)
+    output["extra_output"] = extra_output
+
+    total_calls = len(adaptive_stats)
+    avg_tries = sum(s["num_of_tries"] for s in adaptive_stats) / total_calls if total_calls else 0
+    output["adaptive_total_calls"] = total_calls
+    output["adaptive_avg_real_tries"] = avg_tries
+
+    import json as _json
+    all_tries = [s["num_of_tries"] for s in adaptive_stats]
+    output["jeffreys_floor"] = _jeffreys
+    output["total_simulations"] = sum(all_tries)
+    output["sims_count"] = len(all_tries)
+    output["sims_avg"] = (sum(all_tries) / len(all_tries)) if all_tries else 0
+    output["sims_min"] = min(all_tries) if all_tries else 0
+    output["sims_max"] = max(all_tries) if all_tries else 0
+    output["sims_per_gap"] = _json.dumps(sims_per_gap)
+    output["sims_per_pair"] = _json.dumps(sims_per_pair)
+
+    # ---- total-budget brute fields (length-weighted split) ----
+    output["budget_total_requested"] = B
+    output["budget_split"] = "length"
+    output["budget_per_estimate_n"] = round(sum(all_tries) / num_estimates) if num_estimates else None  # realized mean
     output["budget_num_estimates"] = num_estimates
 
     return output
