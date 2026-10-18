@@ -1683,22 +1683,24 @@ def build_minigrid_candidate_sets(seed=42, size=10):
 MINIGRID_CANDIDATE_SETS = build_minigrid_candidate_sets()
 
 
-def build_minigrid_candidate_sets_easy(n3=4, n2=4, seed=42):
-    """EASY per-fault candidate sets (the distinguishable counterpart of build_minigrid_candidate_sets).
+def build_minigrid_candidate_sets_easy(n3=4, n2=4, n1=0, seed=42):
+    """EASY / MEDIUM per-fault candidate sets (the tunable-difficulty counterpart of the HARD
+    build_minigrid_candidate_sets).
 
-    For each injected fault T the size-(2+n3+n2) set is ALWAYS {T, identity}, then filled with
-    n3 maps at Hamming distance 3 from T + n2 maps at distance 2 -- and DELIBERATELY NO distance-1
-    maps. Distance-1 maps are the near-twins (agree with T on 2 of the 3 nav actions -> nearly
-    identical trajectory); excluding them is exactly what makes this benchmark "easy". The distance-3
-    fillers are maximally different (trivial to reject); the distance-2 fillers (differ on 2 of 3
-    actions) keep a MILD contest so the true fault is not trivially rank-1 for everyone.
+    For each injected fault T the size-(2+n1+n2+n3) set is ALWAYS {T, identity}, then filled with
+    n1 maps at Hamming distance 1 + n2 at distance 2 + n3 at distance 3 from T. Distance measures
+    how many of the 3 nav actions a candidate maps differently from T:
+      * distance-1 = NEAR-TWINS (agree with T on 2 of 3 actions -> nearly identical trajectory -> HARD),
+      * distance-2 = moderate (differ on 2 of 3 -> mild contest),
+      * distance-3 = maximally different (trivial to reject -> easy).
+    n1 is the difficulty knob: n1=0 => "easy" (no near-twins); n1>0 => "medium" (a few near-twins
+    reintroduced so the problem is not trivially solved and adaptive allocation has room to win).
 
-    Default n3=n2=4 (a size-10 set, matching the hard benchmark's size). Bucket sizes to any T are
-    6 @dist1, 12 @dist2, 8 @dist3 (minus identity if it lands in a bucket), so 4/4 (and 5/3) always
-    fit. Deterministic given (seed, n3, n2); uses the SAME fault enumeration and distance metric as
-    the hard set, so instances match 1:1 -- only the 8 distractors per fault change.
-    Returns {spec(T): [ (2+n3+n2) candidate specs ]}."""
-    size = 2 + n3 + n2
+    Defaults n3=n2=4, n1=0 (size-10 easy set). Bucket sizes to any T are 6 @dist1, 12 @dist2,
+    8 @dist3 (minus identity if it lands in a bucket), so e.g. 2/4/2 and 0/4/4 and 5/3/0 all fit.
+    Deterministic given (seed, n1, n2, n3); SAME fault enumeration + distance metric as the hard set,
+    so instances match 1:1 -- only the distractors change. Returns {spec(T): [(2+n1+n2+n3) specs]}."""
+    size = 2 + n1 + n2 + n3
     rng = _mg_random.Random(seed)
     sets = {}
     for T in MINIGRID_FAULTS:
@@ -1710,11 +1712,11 @@ def build_minigrid_candidate_sets_easy(n3=4, n2=4, seed=42):
             buckets[_mg_distance(T, C)].append(C)
         for d in buckets:                                   # seeded-random order within a distance class
             b = sorted(buckets[d]); rng.shuffle(b); buckets[d] = b
-        fill = buckets[3][:n3] + buckets[2][:n2]            # n3 far + n2 moderate; never distance-1
-        if len(fill) < n3 + n2:                             # safety top-up (e.g. identity ate a dist-3 slot)
-            leftovers = buckets[3][n3:] + buckets[2][n2:]   # still only dist-3 / dist-2, never dist-1
-            fill += leftovers[:(n3 + n2) - len(fill)]
-        chosen = must + fill[:(n3 + n2)]
+        fill = buckets[1][:n1] + buckets[2][:n2] + buckets[3][:n3]   # n1 near-twin + n2 moderate + n3 far
+        if len(fill) < n1 + n2 + n3:                        # safety top-up (e.g. identity ate a slot)
+            leftovers = buckets[3][n3:] + buckets[2][n2:] + buckets[1][n1:]
+            fill += leftovers[:(n1 + n2 + n3) - len(fill)]
+        chosen = must + fill[:(n1 + n2 + n3)]
         assert len(chosen) == size, f"easy candidate set for {T} is {len(chosen)}, expected {size}"
         sets[_mg_spec(T)] = [_mg_spec(m) for m in chosen]
     return sets
@@ -1771,9 +1773,10 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
     if _easy_cands:
         _n3 = int(_os.environ.get("MG_EASY_N3", "4"))
         _n2 = int(_os.environ.get("MG_EASY_N2", "4"))
-        _cand_sets = build_minigrid_candidate_sets_easy(_n3, _n2)
-        fr_token = fr_token + f"_easy{_n3}{_n2}"
-        print(f"[easy-cands] MiniGrid candidates = {_n3} dist-3 + {_n2} dist-2, 0 near-twins")
+        _n1 = int(_os.environ.get("MG_EASY_N1", "0"))   # near-twins: 0 = easy, >0 = medium
+        _cand_sets = build_minigrid_candidate_sets_easy(_n3, _n2, _n1)
+        fr_token = fr_token + f"_easy{_n1}{_n2}{_n3}"    # e.g. easy044 (easy) / easy242 (medium)
+        print(f"[easy-cands] MiniGrid candidates = {_n1} dist-1 (near-twin) + {_n2} dist-2 + {_n3} dist-3")
     else:
         _cand_sets = MINIGRID_CANDIDATE_SETS
     if unknown_fault_rate:
