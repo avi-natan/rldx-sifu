@@ -28,11 +28,13 @@ EPS_TAG=$(echo "$MG_EPS" | tr '.' '_')
 # job env by the diagnoser (fixed sims-per-estimate) -- no flag needed here, just pass via --export.
 UFR_FLAG=""; if [ "${MG_UFR:-0}" = "1" ]; then UFR_FLAG="-ufr"; fi
 ROOT_FLAG=""; if [ -n "${MG_RESULTS_ROOT:-}" ]; then ROOT_FLAG="--results_root ${MG_RESULTS_ROOT}"; fi
+# easy-vs-hard Taxi benchmark: TAXI_BENCHMARK=v3_easy switches to the distinguishable benchmark.
+TAXI_BENCH_FLAG=""; if [ -n "${TAXI_BENCHMARK:-}" ]; then TAXI_BENCH_FLAG="--taxi_benchmark ${TAXI_BENCHMARK}"; fi
 # optional free-form suffix (e.g. "_eps") so a variant of the same method lands in its own folder
 RF="${MG_RUN_FOLDER:-taxi_${MG_METHOD}_eps${EPS_TAG}${MG_OUT_SUFFIX:-}}"
 mkdir -p experiment_logs/taxi_ufr
 
 python main.py --mg_method ${MG_METHOD} --epsilon ${MG_EPS} \
-    ${UFR_FLAG} ${ROOT_FLAG} \
+    ${UFR_FLAG} ${ROOT_FLAG} ${TAXI_BENCH_FLAG} \
     --mg_group ${SLURM_ARRAY_TASK_ID} --mg_num_groups ${TX_NUM_GROUPS:-500} \
     -o ${RF}

@@ -202,6 +202,13 @@ if __name__ == '__main__':
         help="Use the confidence-bounded RACING ufr diagnoser for the Taxi hard-class2 experiment "
              "(implies unknown fault rate). Results go to ufr_experiments/ (kept out of the main tree)."
     )
+    parser.add_argument(
+        "--taxi_benchmark",
+        choices=["hard_v2", "v3_easy"],
+        default="hard_v2",
+        help="Taxi benchmark: 'hard_v2' (default, v2 class-2 near-twins) or 'v3_easy' (taxi-v3-easy: "
+             "same seeds, most-used a* + distinguishable candidates)."
+    )
 
     args = parser.parse_args()
 
@@ -332,6 +339,7 @@ if __name__ == '__main__':
                 unit_end=taxi_unit_end,
                 ufr_variant=_taxi_variant,
                 results_root=args.results_root,
+                taxi_benchmark=args.taxi_benchmark,
             )
 
 

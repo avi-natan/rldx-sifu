@@ -1304,7 +1304,7 @@ def multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO(epsilon=0.03, unknown_fault_
 def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_folder=None,
                                                unknown_fault_rate=False, use_racing=False,
                                                unit_start=0, unit_end=None, ufr_variant=None,
-                                               results_root=None):
+                                               results_root=None, taxi_benchmark="hard_v2"):
     """Taxi-v4 HARD class-2 epsilon experiment (the "second experiment").
 
     Mirrors multiple_experiment_Taxi_v4_NON_DETERMINSTIC_PO, but the instances come from
@@ -1348,9 +1348,15 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
     if _variant is not None:
         fr_token = "unknown_fr_" + _variant
 
-    # Build the first num_seeds CLASS-2 instances (least-used a*, count >= 2).
-    bench = build_benchmark(seeds_per_class=num_seeds, classes=(2,), verbose=False)
-    instances = [inst for inst in bench if inst[2] == 2][:num_seeds]
+    # Build the instances. Default "hard_v2" = v2 HARD class-2 (least-used a*, near-twin candidates).
+    # taxi_benchmark="v3_easy" -> the taxi-v3-easy benchmark (SAME seeds, but most-used a* +
+    # distinguishable candidates; see experiments_scripts/taxi_v3_easy_benchmark.py).
+    if taxi_benchmark == "v3_easy":
+        from taxi_v3_easy_benchmark import build_benchmark as _build_easy_taxi
+        instances = _build_easy_taxi(seeds_per_class=num_seeds, verbose=False)
+    else:
+        bench = build_benchmark(seeds_per_class=num_seeds, classes=(2,), verbose=False)
+        instances = [inst for inst in bench if inst[2] == 2][:num_seeds]
 
     # Flat work-unit list (seed_idx, visibility, fault_rate) so the run can be split across a SLURM
     # array (like the MiniGrid benchmark). Each task diagnoses only its window -> full parallelism.
@@ -1423,7 +1429,8 @@ def multiple_experiment_Taxi_v4_hard_class2_PO(epsilon=0.03, num_seeds=100, run_
           f"({avg_diagnosis_time_sec:.2f} sec)")
 
     file_suffix = str(epsilon).replace(".", "_")
-    file_path = (f"taxi_v4_hard_class2_PO_{fr_token}_epsilon_{file_suffix}_SEEDS_{num_seeds}"
+    bench_tag = "v3_easy" if taxi_benchmark == "v3_easy" else "hard_class2"
+    file_path = (f"taxi_v4_{bench_tag}_PO_{fr_token}_epsilon_{file_suffix}_SEEDS_{num_seeds}"
                  f"_UNITS_{unit_start}-{unit_end}")
 
     _results_root = results_root if results_root is not None else ("ufr_experiments" if _variant is not None else "experimental results")
@@ -1676,6 +1683,43 @@ def build_minigrid_candidate_sets(seed=42, size=10):
 MINIGRID_CANDIDATE_SETS = build_minigrid_candidate_sets()
 
 
+def build_minigrid_candidate_sets_easy(n3=4, n2=4, seed=42):
+    """EASY per-fault candidate sets (the distinguishable counterpart of build_minigrid_candidate_sets).
+
+    For each injected fault T the size-(2+n3+n2) set is ALWAYS {T, identity}, then filled with
+    n3 maps at Hamming distance 3 from T + n2 maps at distance 2 -- and DELIBERATELY NO distance-1
+    maps. Distance-1 maps are the near-twins (agree with T on 2 of the 3 nav actions -> nearly
+    identical trajectory); excluding them is exactly what makes this benchmark "easy". The distance-3
+    fillers are maximally different (trivial to reject); the distance-2 fillers (differ on 2 of 3
+    actions) keep a MILD contest so the true fault is not trivially rank-1 for everyone.
+
+    Default n3=n2=4 (a size-10 set, matching the hard benchmark's size). Bucket sizes to any T are
+    6 @dist1, 12 @dist2, 8 @dist3 (minus identity if it lands in a bucket), so 4/4 (and 5/3) always
+    fit. Deterministic given (seed, n3, n2); uses the SAME fault enumeration and distance metric as
+    the hard set, so instances match 1:1 -- only the 8 distractors per fault change.
+    Returns {spec(T): [ (2+n3+n2) candidate specs ]}."""
+    size = 2 + n3 + n2
+    rng = _mg_random.Random(seed)
+    sets = {}
+    for T in MINIGRID_FAULTS:
+        must = [T, _MG_IDENTITY]
+        buckets = {1: [], 2: [], 3: []}
+        for C in _MG_ALL_MAPS:
+            if C in must:
+                continue
+            buckets[_mg_distance(T, C)].append(C)
+        for d in buckets:                                   # seeded-random order within a distance class
+            b = sorted(buckets[d]); rng.shuffle(b); buckets[d] = b
+        fill = buckets[3][:n3] + buckets[2][:n2]            # n3 far + n2 moderate; never distance-1
+        if len(fill) < n3 + n2:                             # safety top-up (e.g. identity ate a dist-3 slot)
+            leftovers = buckets[3][n3:] + buckets[2][n2:]   # still only dist-3 / dist-2, never dist-1
+            fill += leftovers[:(n3 + n2) - len(fill)]
+        chosen = must + fill[:(n3 + n2)]
+        assert len(chosen) == size, f"easy candidate set for {T} is {len(chosen)}, expected {size}"
+        sets[_mg_spec(T)] = [_mg_spec(m) for m in chosen]
+    return sets
+
+
 def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rate=False,
                                                  fault_rate=0.5, num_seeds=3, run_folder=None,
                                                  unit_start=0, unit_end=None,
@@ -1718,6 +1762,20 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
     fr_token = "unknown_fr" if unknown_fault_rate else "known_fr"
     if _variant is not None:
         fr_token = "unknown_fr_" + _variant   # e.g. unknown_fr_v1_freeze
+    # EASY candidate sets (controlled ablation): MG_EASY_CANDS=1 swaps the HARD nearest-Hamming
+    # near-twin candidates for build_minigrid_candidate_sets_easy(n3,n2) -- distinguishable
+    # (default 4 dist-3 + 4 dist-2, 0 near-twins; MG_EASY_N3/MG_EASY_N2 override). Same 26 faults x
+    # seeds x visibilities, only the 8 distractors per fault change -> a 1:1 controlled comparison.
+    # The '_easyN3N2' tag on fr_token (-> filename) keeps easy output from clobbering the hard run.
+    _easy_cands = _os.environ.get("MG_EASY_CANDS") == "1"
+    if _easy_cands:
+        _n3 = int(_os.environ.get("MG_EASY_N3", "4"))
+        _n2 = int(_os.environ.get("MG_EASY_N2", "4"))
+        _cand_sets = build_minigrid_candidate_sets_easy(_n3, _n2)
+        fr_token = fr_token + f"_easy{_n3}{_n2}"
+        print(f"[easy-cands] MiniGrid candidates = {_n3} dist-3 + {_n2} dist-2, 0 near-twins")
+    else:
+        _cand_sets = MINIGRID_CANDIDATE_SETS
     if unknown_fault_rate:
         print(f"[ufr] rate grid = {_grid_name} -> {fault_rate_candidates} | "
               f"diagnoser = {_variant or 'full'}")
@@ -1753,7 +1811,7 @@ def multiple_experiment_MiniGrid_fault_benchmark(epsilon=0.04, unknown_fault_rat
     for u_idx, (fi, si, percent_visible_states) in enumerate(my_units, start=unit_start):
         T = MINIGRID_FAULTS[fi]
         execution_fault_mode_name = _mg_spec(T)
-        candidate_specs = MINIGRID_CANDIDATE_SETS[execution_fault_mode_name]  # 10, incl. T + identity
+        candidate_specs = _cand_sets[execution_fault_mode_name]  # 10, incl. T + identity (hard or easy)
         instance_index = fi * num_seeds + si     # identifies the fixed instance (same across runs)
         instance_seed = 10 + instance_index
         dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
