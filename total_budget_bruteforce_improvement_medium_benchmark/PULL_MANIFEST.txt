@@ -1,0 +1,7 @@
+MEDIUM MiniGrid benchmark (n1=2 near-twins + n2=4 + n3=2) — launched 2026-10-18 @ 61e7559a
+Methods: brute_even + ucb_fr_b (both C=1.4142,2.0). Budgets: 200k 400k 800k 1.6M 3.2M.
+Domains: MiniGrid_Empty_16x16_v0, MiniGrid_SimpleCrossing_S11N2_v0 (Taxi has no n1 knob).
+MG_EASY_CANDS=1 MG_EASY_N1=2 MG_EASY_N2=4 MG_EASY_N3=2, noise 0.5, fr 0.5, eps 0.04. Batched (39 tasks/cell).
+Output: total_budget_bruteforce_improvement_medium_benchmark/<variant>/<domain>/<cell>/{xlsx,logs}
+PULL: ssh bgu 'cd ~/rldx_repo/rldx-sifu && tar czf - total_budget_bruteforce_improvement_medium_benchmark/{brute_even,ucb_fr_b}' | tar xzf -
+Purpose: test if ucb beats brute in the MEDIUM sweet spot (easy 0-near-twin made MiniGrid ~solved).

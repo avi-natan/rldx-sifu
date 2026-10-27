@@ -1,0 +1,53 @@
+TOTAL-BUDGET SWEEP — mean real_fault_rank (lower=better), aggregated 2026-10-13
+Methods at EQUAL TOTAL budget B (independent of trajectory length).
+brute_even / brute_length: 7 budgets.  ucb_fr_b (both C): only >=200k.  (n) = #instances.
+
+===== FrozenLake =====
+   budget |   brute_even |    brute_len | ucb_fr_b c1.41 |  ucb_fr_b c2.0
+    50000 |   3.040(495) |   3.158(495) |           -    |           -
+   100000 |   2.687(495) |   2.663(495) |           -    |           -
+   200000 |   2.400(495) |   2.404(495) |     2.190(495) |     2.228(495)
+   400000 |   2.311(495) |   2.279(495) |     2.186(495) |     2.178(495)
+   800000 |   2.174(495) |   2.238(495) |     2.184(495) |     2.218(495)
+  1600000 |   2.186(495) |   2.214(495) |     2.206(495) |     2.208(495)
+  3200000 |   2.172(495) |   2.202(495) |     2.162(495) |     2.141(495)
+
+===== Taxi =====
+   budget |   brute_even |    brute_len | ucb_fr_b c1.41 |  ucb_fr_b c2.0
+    50000 |   2.890(500) |   2.916(500) |           -    |           -
+   100000 |   2.916(500) |   2.862(500) |           -    |           -
+   200000 |   2.818(500) |   2.740(500) |     2.864(500) |     2.860(500)
+   400000 |   2.780(500) |   2.742(500) |     2.826(500) |     2.808(500)
+   800000 |   2.740(500) |   2.736(500) |     2.834(500) |     2.834(500)
+  1600000 |   2.738(500) |   2.776(500) |     2.762(500) |     2.774(500)
+  3200000 |   2.744(500) |   2.768(500) |     2.738(500) |     2.760(500)
+
+===== MG-Empty =====
+   budget |   brute_even |    brute_len | ucb_fr_b c1.41 |  ucb_fr_b c2.0
+    50000 |   3.428(390) |   3.421(390) |           -    |           -
+   100000 |   2.967(390) |   3.003(390) |           -    |           -
+   200000 |   2.721(390) |   2.779(390) |     2.662(390) |     2.703(390)
+   400000 |   2.633(390) |   2.597(390) |     2.679(390) |     2.695(390)
+   800000 |   2.536(390) |   2.467(390) |     2.562(390) |     2.528(390)
+  1600000 |   2.469(390) |   2.410(390) |     2.505(390) |     2.556(390)
+  3200000 |   2.426(390) |   2.418(390) |     2.469(390) |     2.472(390)
+
+===== MG-SimpleCrossing =====
+   budget |   brute_even |    brute_len | ucb_fr_b c1.41 |  ucb_fr_b c2.0
+    50000 |   2.287(390) |   2.369(390) |           -    |           -
+   100000 |   2.074(390) |   2.079(390) |           -    |           -
+   200000 |   1.995(390) |   2.015(390) |     2.038(390) |     1.997(390)
+   400000 |   1.877(390) |   1.910(390) |     1.808(390) |     1.785(390)
+   800000 |   1.772(390) |   1.813(390) |     1.746(390) |     1.774(390)
+  1600000 |   1.792(390) |   1.715(390) |     1.728(390) |     1.731(390)
+  3200000 |   1.736(390) |   1.690(390) |     1.669(390) |     1.679(390)
+
+READING (before significance testing — many small gaps may be noise):
+- ucb_fr_b (adaptive) WINS on the long-trajectory, many-gap domains FrozenLake & SimpleCrossing,
+  clearest at low-mid budget (FL 200k: 2.19 vs 2.40 brute). Matches the N-regime adaptive-wins-low story.
+- brute_LENGTH is the surprise: competitive-to-best on Taxi (short trajectories) and MG-Empty at
+  mid-high budget, and beats brute_even on Taxi/Empty in most cells.
+- brute_even is rarely the best — dominated by ucb_fr_b or brute_length almost everywhere.
+- The two C values are close (within noise mostly).
+NEXT: notes 1+2 (SE bands + paired bootstrap/Wilcoxon) to mark which gaps are real.
+5 budgets to carry into max-vs-sum: 200k/400k/800k/1.6M/3.2M (the ucb_fr_b range).

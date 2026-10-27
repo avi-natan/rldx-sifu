@@ -1,0 +1,26 @@
+TOTAL-BUDGET EASY-BENCHMARK study — pull manifest
+Launched 2026-10-18 | branch new-master-ai @ 5a58edf | cluster ssh bgu
+
+WHAT: the total-budget study re-run on the EASY benchmarks (distinguishable candidates).
+  - Taxi: taxi-v3-easy (most-used a* + distinguishable candidates; same seeds as v2 class-2).
+  - MiniGrid (both): easy candidate sets MG_EASY_CANDS=1, 4 dist-3 + 4 dist-2, 0 near-twins.
+  Method THIS run: brute_even ONLY (ucb_fr_b NOT run yet). Budgets >=200k.
+  eps 0.04, -ufr, fault rates FL n/a / Taxi 0.3 / MiniGrid 0.5 @ noise 0.5. Batched full parallelism.
+
+OUTPUT (cluster, same tree here):
+  total_budget_bruteforce_improvement_easy_benchmark/brute_even/<domain>/B<budget>/{xlsx,logs}
+  domains: Taxi_v4, MiniGrid_Empty_16x16_v0, MiniGrid_SimpleCrossing_S11N2_v0
+  budgets: 200000 400000 800000 1600000 3200000
+
+JOB IDS (array -> cell):
+  Taxi:        23271495 B200k  23271496 B400k  23271506 B800k  23271507 B1.6M  23271508 B3.2M
+  MG-Empty:    23271509 B200k  23271510 B400k  23271511 B800k  23271512 B1.6M  23271513 B3.2M
+  MG-SimpleCrossing: 23271514 B200k 23271515 B400k 23271516 B800k 23271517 B1.6M 23271518 B3.2M
+
+MONITOR: ssh bgu 'squeue -u $USER -h -r | wc -l'   (0 => done)
+PULL (tar; rsync not available locally):
+  ssh bgu 'cd ~/rldx_repo/rldx-sifu && tar czf - total_budget_bruteforce_improvement_easy_benchmark/brute_even' | tar xzf -
+
+EXPECTED rows/cell: Taxi 500 (100 seeds x 5 vis), MiniGrid 390 (26 faults x 3 seeds x 5 vis).
+NEXT: run ucb_fr_b (both C) on the SAME easy benchmarks, then aggregate easy ucb-vs-brute_even
+      and compare to the hard total_budget_bruteforce_improvement/ results.

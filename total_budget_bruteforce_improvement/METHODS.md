@@ -46,6 +46,22 @@ sims; total ≈ B. Recorded `budget_split="length"`, `budget_per_estimate_n` = r
 Rationale: the fault score is `Σ_gaps log p`, and long gaps have small, noisy p that can dominate
 that sum — length-weighting pours sims where they matter most. Variant name `brute_length`.
 
+## Method 3 — `ucb_fr_b` (built; ready to launch, not yet launched)
+
+`fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR_B` (dedicated, hardcoded). The
+total-budget version of our best adaptive method `ucb_fr` (UCB over (fault,rate) arms, spend on the
+widest-Wilson-CI gap, neighbour-separation freeze, max-over-rate ranking). Two adjustments vs ucb_fr:
+
+1. **budget**: `total_budget = B` (env `MG_UCB_FR_B`), not `N·F·R·G`; stop when spent ≥ B. Makes it
+   directly comparable to brute_even/brute_length at equal total budget, decoupled from gap-count.
+2. **init**: `init_per_estimate = max(1, min(30, round(0.5·B/(F·R·G))))` — the familiar 30 whenever
+   affordable (init ≤ 0.5·B), else half the even-split per-estimate. Fits any B, leaves ≥half for the
+   adaptive loop, caps at 30 at high B (surplus → adaptivity). No fraction to sweep.
+
+Only tunable: `MG_UCB_FR_C` (exploration C; sweep `c1_414` = 1.4142, `c2_0` = 2.0). Cells:
+`ucb_fr_b/<domain>/c<C>_B<budget>/`. Launcher `scratchpad/launch_ucb_fr_b.sh` (CLIST/BUDGETS editable).
+Smoke-tested: total hits B exactly; init 22/11 at B=40k for G=9/18.
+
 **Exactness note (applies to both brute_even and brute_length):** the per-estimate sim count is run
 as a SINGLE Monte-Carlo batch of exactly `n` (epsilon inert), so the total lands on B. The earlier
 batch size of `min(50,n)` overshot `max_tries` to the next multiple of 50 whenever `n` was not a

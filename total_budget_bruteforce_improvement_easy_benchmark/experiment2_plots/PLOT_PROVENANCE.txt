@@ -1,0 +1,21 @@
+PLOT PROVENANCE
+===============
+These plots were created by : C:\Users\User\AppData\Local\Temp\claude\C--Users-User-Desktop-rldx-repo-rldx-sifu\84415725-a15b-466d-ab0a-8f8d6d80ca11\scratchpad\build_exp2.py
+Generated                   : 2026-10-19 16:45:19
+Command                     : C:/Users/User/AppData/Local/Temp/claude/C--Users-User-Desktop-rldx-repo-rldx-sifu/84415725-a15b-466d-ab0a-8f8d6d80ca11/scratchpad/build_exp2.py
+
+Plots created in this folder (C:\Users\User\Desktop\rldx_repo\rldx-sifu\total_budget_bruteforce_improvement_easy_benchmark\experiment2_plots):
+  - d1_table_Taxi.png
+  - d1_table_MiniGrid_Empty.png
+  - d1_table_MiniGrid_SimpleCrossing.png
+  - d1_tables_brute_vs_ucb_easy.png
+  - d1_brute_vs_ucb_easy.png
+  - d2_table_brute_easy_vs_hard.png
+  - d2_table_ucb_easy_vs_hard.png
+  - d2_brute_easy_vs_hard.png
+  - d2_ucb_easy_vs_hard.png
+  - SUMMARY_experiment2.txt
+
+Input data read from:
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\total_budget_bruteforce_improvement_easy_benchmark
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\total_budget_bruteforce_improvement

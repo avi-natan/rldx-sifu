@@ -1,0 +1,17 @@
+PLOT PROVENANCE
+===============
+These plots were created by : C:\Users\User\AppData\Local\Temp\claude\C--Users-User-Desktop-rldx-repo-rldx-sifu\84415725-a15b-466d-ab0a-8f8d6d80ca11\scratchpad\build_exp1_newvsold.py
+Generated                   : 2026-10-19 15:24:23
+Command                     : C:/Users/User/AppData/Local/Temp/claude/C--Users-User-Desktop-rldx-repo-rldx-sifu/84415725-a15b-466d-ab0a-8f8d6d80ca11/scratchpad/build_exp1_newvsold.py
+
+Plots created in this folder (C:\Users\User\Desktop\rldx_repo\rldx-sifu\total_budget_bruteforce_improvement\experiment1_plots):
+  - exp1_brute_total_vs_N.png
+  - exp1_ucb_total_vs_N.png
+  - table_brute_total_vs_N.png
+  - table_ucb_c1_414_total_vs_N.png
+  - table_ucb_c2_0_total_vs_N.png
+  - SUMMARY_total_vs_N.txt
+
+Input data read from:
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\total_budget_bruteforce_improvement
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\unknown_fr_bruteforce_improvement
