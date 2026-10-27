@@ -2468,6 +2468,192 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR_B(
     return output
 
 
+def fault_identification_non_deterministic_PO_unknown_fault_rate_BAI_FR(
+        debug_print, render_mode, instance_seed, ml_model_name, domain_name,
+        observations, candidate_fault_modes, fault_rate_candidates, epsilon):
+    """TOTAL-BUDGET best-arm-IDENTIFICATION diagnoser (mg_method = 'bai_fr').
+
+    Motivation (lit review 2026-10): our goal is PURE EXPLORATION -- we only want the final
+    RANKING of faults, not to maximise reward while sampling. That is best-arm identification
+    (simple regret), NOT the regret-minimising objective UCB (ucb_fr_b) is built for. The
+    structural template is Combinatorial Pure Exploration (Chen & Lin, NeurIPS 2014): we pull
+    base arms (fault,rate,gap) but must identify a DECISION object (a fault) defined over them
+    through an offline argmax oracle. The scheduler here is SEQUENTIAL HALVING
+    (Karnin/Koren/Somekh; Audibert-Bubeck-Munos successive-rejects family) run at the FAULT level.
+
+    How it differs from brute_even (which spends B once, uniformly over every fault x rate x gap)
+    and from ucb_fr_b (UCB index over (fault,rate) arms):
+      * phased elimination: ceil(log2 F) phases; each phase spends an equal slice of B UNIFORMLY
+        over the SURVIVING faults (and, within a fault, over its rate x gap estimates), then drops
+        the worst half of surviving faults. Budget freed by eliminated faults is REALLOCATED to the
+        survivors, so the hard top-of-ranking contenders get progressively more samples -> sharper
+        separation exactly where it matters. This is the Sequential-Halving advantage over a flat
+        even split, and the simple-regret-correct alternative to a UCB index.
+      * NO init / warm-up (meeting note "ucb without init"): phase 1 is just the uniform allocation.
+      * roles of the triple are explicit: FAULT = decision target (argmax); RATE = nuisance,
+        profiled out by max-over-rate; GAP = conditionally-independent evidence, combined by
+        geomean of Jeffreys p-hat (identical scoring to brute/ucb_fr_b, so ranks are comparable).
+
+    A full ranking (needed for real_fault_rank) is recovered from the elimination order: a fault
+    that survives more phases ranks above one eliminated earlier; ties broken by best-rate logL.
+
+    Env study variable: none required. MG_BAI_B sets the total budget B (default 400000).
+    Shares CRN seeding, sample(), jeff() with ucb_fr_b so the two are paired on identical sims.
+    """
+    import os as _os
+    B = int(_os.environ.get("MG_BAI_B", "400000"))   # TOTAL simulation budget for this instance
+
+    diagnosis_seed = instance_seed + SIMULATION_OFFSET
+    policy = load_trained_model(domain_name, ml_model_name)
+    simulator = make_wrapped_env(domain_name, render_mode)
+    initial_obs, _ = simulator.reset(seed=instance_seed)
+    assert comparators[domain_name](observations[0], initial_obs)
+    comparator = comparators[domain_name]
+    t0 = time.time()
+
+    faults = list(candidate_fault_modes.keys())
+    rates = list(fault_rate_candidates)
+
+    gaps = []
+    last = 0
+    for i in range(1, len(observations)):
+        if observations[i] is None:
+            continue
+        gaps.append({"idx": len(gaps), "start": observations[last], "end": observations[i],
+                     "length": i - last, "seed": diagnosis_seed + last})
+        last = i
+    G = max(len(gaps), 1)
+    F = len(faults)
+    R = len(rates)
+    num_estimates = F * R * len(gaps)
+    total_budget = B
+
+    acc = {(f, r, g["idx"]): {"hits": 0, "n": 0} for f in faults for r in rates for g in gaps}
+
+    def sample(f, r, gidx, k):
+        a = acc[(f, r, gidx)]; g = gaps[gidx]; fm = candidate_fault_modes[f]
+        base = g["seed"]; rng = random.Random()
+        for i in range(a["n"], a["n"] + k):
+            s = base + i * MAX_STATES
+            rng.seed(s)
+            nxt = execute_one_trace(g["start"], g["length"], fm, r, domain_name, s, rng,
+                                    simulator, policy, False)
+            if comparator(nxt, g["end"]):
+                a["hits"] += 1
+            a["n"] += 1
+
+    def jeff(a):
+        return (a["hits"] + 0.5) / (a["n"] + 1.0)
+
+    def best_rate_logL(f):
+        """profile over rate: max_r sum_g log jeff(f,r,g).  Returns (best_logL, best_rate)."""
+        best_L = -1e18; best_r = rates[0]
+        for r in rates:
+            L = 0.0
+            for g in gaps:
+                L += math.log(jeff(acc[(f, r, g["idx"])]))
+            if L > best_L:
+                best_L = L; best_r = r
+        return best_L, best_r
+
+    # ---- Sequential Halving over FAULTS ----
+    import math as _math
+    phases = max(1, int(_math.ceil(_math.log2(max(F, 2)))))
+    surviving = list(faults)
+    survived_phases = {f: 0 for f in faults}   # how many phases a fault was still alive at start of
+    spent = 0
+    phase_log = []
+
+    for phase in range(phases):
+        S = len(surviving)
+        if S <= 1:
+            break
+        phases_left = phases - phase
+        remaining = total_budget - spent
+        if remaining <= 0:
+            break
+        per_phase = remaining // phases_left
+        # per surviving fault, split across its R*G estimates; uniform (true Sequential Halving)
+        per_estimate = max(1, per_phase // max(S * R * len(gaps), 1))
+        # don't blow the phase budget by more than one estimate-block when we can afford to shrink
+        if per_estimate > 1 and per_estimate * S * R * len(gaps) > remaining:
+            per_estimate = max(1, remaining // max(S * R * len(gaps), 1))
+        for f in surviving:
+            survived_phases[f] = phase + 1
+            for r in rates:
+                for g in gaps:
+                    if spent >= total_budget:
+                        break
+                    k = per_estimate
+                    if spent + k > total_budget:
+                        k = total_budget - spent
+                    if k <= 0:
+                        break
+                    sample(f, r, g["idx"], k); spent += k
+        # score survivors and drop the worst half
+        scores = {f: best_rate_logL(f)[0] for f in surviving}
+        ranked = sorted(surviving, key=lambda f: scores[f], reverse=True)
+        keep = max(1, int(_math.ceil(S / 2.0)))
+        surviving = ranked[:keep]
+        phase_log.append({"phase": phase, "S": S, "keep": keep, "per_estimate": per_estimate,
+                          "spent": spent})
+
+    # the single (or few) survivor(s) survived all phases
+    for f in surviving:
+        survived_phases[f] = phases
+
+    # ---- final ranking: identical scoring to brute/ucb_fr_b, ordered by (survival depth, logL) ----
+    log_prob_total_per_fault_and_rate = {
+        f: {r: sum(math.log(jeff(acc[(f, r, g["idx"])])) for g in gaps) for r in rates}
+        for f in faults}
+    best_rate_per_fault = {}; best_logL_per_fault = {}
+    for f in faults:
+        br = max(rates, key=lambda r: log_prob_total_per_fault_and_rate[f][r])
+        best_rate_per_fault[f] = br
+        best_logL_per_fault[f] = log_prob_total_per_fault_and_rate[f][br]
+    sorted_faults = [(f, best_logL_per_fault[f]) for f in sorted(
+        faults, key=lambda f: (survived_phases[f], best_logL_per_fault[f]), reverse=True)]
+    total_traces = sum(a["n"] for a in acc.values())
+    T = G
+
+    extra_output = ""
+    for fault, logL in sorted_faults:
+        extra_output += (f"Fault: {fault}, logL: {logL:.6f}, survived_phases: {survived_phases[fault]}, "
+                         f"Best Estimated Rate: {best_rate_per_fault[fault]}\n")
+
+    output = {
+        "diagnosis_time_sec": time.time() - t0,
+        "diagnosis_time_ms": (time.time() - t0) * 1000,
+        "avg_gap_time": 0.0,
+        "num_gaps": len(gaps),
+        "sorted_faults": sorted_faults,
+        "sorted_faults_with_exp_val": [(f, math.exp(L / T)) for f, L in sorted_faults],
+        "best_rate_per_fault": best_rate_per_fault,
+        "log_prob_total_per_fault_and_rate": log_prob_total_per_fault_and_rate,
+        "fault_rate_candidates": fault_rate_candidates,
+        "observations": observations,
+        "observations_len": len(observations),
+        "extra_output": extra_output,
+        "total_simulations": total_traces,
+        "bai_total_traces": total_traces,
+        "bai_total_budget": total_budget,
+        "bai_num_faults": F,
+        "bai_phases": phases,
+        "bai_survived_phases": survived_phases,
+        "bai_phase_log": phase_log,
+        # total-budget fields (parity with brute_even/_length/ucb_fr_b)
+        "budget_total_requested": B,
+        "budget_split": "bai",
+        "budget_per_estimate_n": (phase_log[0]["per_estimate"] if phase_log else 0),
+        "budget_num_estimates": num_estimates,
+        "adaptive_total_calls": len(acc),
+        "adaptive_avg_real_tries": total_traces / len(acc) if acc else 0,
+    }
+    print(f"\n===== BAI_FR done: B={B} phases={phases} traces={total_traces}/{total_budget} "
+          f"winner={sorted_faults[0][0]} =====")
+    return output
+
+
 def fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV(
         debug_print, render_mode, instance_seed, ml_model_name, domain_name,
         observations, candidate_fault_modes, fault_rate_candidates, epsilon):
