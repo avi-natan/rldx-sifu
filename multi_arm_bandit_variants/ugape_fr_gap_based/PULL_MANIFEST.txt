@@ -1,0 +1,40 @@
+TOTAL-BUDGET ugape_fr (UGapE-style non-eliminating BAI) -- MEDIUM-COMPOSITE run | pull manifest
+Launched: 2026-10-31 | cluster slurm.bgu.ac.il (ssh bgu) | branch new-master-ai @ 2955e04 (ugape_fr)
+
+WHAT: MAB variant #2. ugape_fr over a MEDIUM-COMPOSITE benchmark = each domain at its true
+  per-domain difficulty, so it is 1:1 matched to existing incumbent results:
+    FrozenLake            = HARD config (its only difficulty; fr 0.5)         -> compare vs HARD folder
+    Taxi                  = EASY (taxi-v3-easy = Taxi's "medium"; fr 0.3)     -> compare vs EASY folder
+    MiniGrid-Empty        = MEDIUM (MG_EASY_CANDS=1 N1=2 N2=4 N3=2, n/fr 0.5) -> compare vs MEDIUM folder
+    MiniGrid-SimpleCross. = MEDIUM (same flags)                               -> compare vs MEDIUM folder
+  4 domains x 5 budgets (200k 400k 800k 1.6M 3.2M) = 20 batched array jobs. eps 0.04, -ufr.
+  FULL PARALLELISM batched config: FL/TX array 0-49 (50 groups), MG array 0-38 (39) ~10 inst/task.
+  Launcher: launch_ugape_fr.sh (cluster).
+
+OUTPUT (NEW folder; cluster tree == here):
+  multi_arm_bandit_variants/ugape_fr_gap_based/results_medium/<domain>/B<budget>/{xlsx,logs}
+
+MATCHED INCUMBENT SOURCES for the comparison (NEVER cross benchmarks):
+  FrozenLake            -> total_budget_bruteforce_improvement                (brute_even, ucb c1_414/c2_0)
+  Taxi                  -> total_budget_bruteforce_improvement_easy_benchmark (brute_even, ucb c1_414/c2_0)
+  MiniGrid-Empty        -> total_budget_bruteforce_improvement_medium_benchmark
+  MiniGrid-SimpleCross. -> total_budget_bruteforce_improvement_medium_benchmark
+  (brute_length exists only for FL-hard -> left out for uniform 4-domain comparison.)
+
+JOB IDS (array -> cell) [launched 2026-10-31]:
+  FrozenLake:  23746845 B200k  23746849 B400k  23746853 B800k  23746857 B1.6M  23746861 B3.2M
+  Taxi:        23746846 B200k  23746850 B400k  23746854 B800k  23746858 B1.6M  23746862 B3.2M
+  MG-Empty:    23746847 B200k  23746851 B400k  23746855 B800k  23746859 B1.6M  23746863 B3.2M
+  MG-Crossing: 23746848 B200k  23746852 B400k  23746856 B800k  23746860 B1.6M  23746864 B3.2M
+
+MONITOR: ssh bgu 'squeue -u $USER -h -r -t RUNNING,PENDING | wc -l'   (0 => done)
+         ssh bgu 'cd ~/rldx_repo/rldx-sifu && find multi_arm_bandit_variants/ugape_fr_gap_based/results_medium -name "*.xlsx" | wc -l'
+
+PULL (tar over ssh; rsync not available locally):
+  ssh bgu 'cd ~/rldx_repo/rldx-sifu/multi_arm_bandit_variants/ugape_fr_gap_based/results_medium && tar czf - .' \
+    | tar xzf - -C "C:/Users/User/Desktop/rldx_repo/rldx-sifu/multi_arm_bandit_variants/ugape_fr_gap_based/results_medium/"
+
+EXPECTED instance rows/cell: FL 495, Taxi 500, MG-Empty 390, MG-Crossing 390.
+
+CLUSTER GIT NOTE: code placed via `git checkout origin/new-master-ai -- p_diagnosers.py p_pipeline.py
+  main.py p_single_experiments.py` (HEAD still 22b869f). Stashes stash@{0}/{1} intact.
