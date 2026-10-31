@@ -2288,6 +2288,12 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR_B(
     even_n = B / max(num_estimates, 1)
     init_per_estimate = max(1, min(30, round(0.5 * even_n)))
     batch = 100 if even_n >= 200 else 20
+    # No-init variant (meeting note 'ucb without init'): MG_UCB_FR_NOINIT=1 -> init_per_estimate=0,
+    # so the seeding loop below is a no-op and the UCB loop cold-starts, allocating purely via arm
+    # selection (unplayed arms carry the max exploration bonus, so they get pulled first). Default
+    # off -> ucb_fr_b behaviour (and its committed results) unchanged.
+    if _os.environ.get("MG_UCB_FR_NOINIT", "0") == "1":
+        init_per_estimate = 0
 
     acc = {(f, r, g["idx"]): {"hits": 0, "n": 0} for f in faults for r in rates for g in gaps}
 
@@ -2466,6 +2472,37 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR_B(
           f"picks={picks} traces={total_traces}/{total_budget} rate_freezes={len(frozen_rates)} "
           f"fault_freezes={len(decided_faults)} =====")
     return output
+
+
+def fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR_B_NOINIT(
+        debug_print, render_mode, instance_seed, ml_model_name, domain_name,
+        observations, candidate_fault_modes, fault_rate_candidates, epsilon):
+    """ucb_fr_b with NO init / warm-up (mg_method = 'ucb_fr_b_noinit'; meeting note 'ucb without init').
+
+    Identical to ucb_fr_b EXCEPT the uniform seeding of every (fault,rate,gap) is skipped: the UCB
+    loop cold-starts from zero samples and allocates the whole budget purely through arm selection.
+    Unplayed arms carry the maximum exploration bonus (reward defaults to the Jeffreys 0.5, count 0 ->
+    bonus C*sqrt(ln(all_n)/1)), so UCB naturally pulls each arm before it starts exploiting.
+
+    Thin wrapper that forces MG_UCB_FR_NOINIT=1 and delegates to UCB_FR_B, so the two share ONE
+    implementation (any fix to the UCB core applies to both). Reads the same budget/C env as ucb_fr_b
+    (MG_UCB_FR_B / MG_UCB_FR_C) so it is a clean 1:1 contrast isolating the effect of init.
+    """
+    import os as _os
+    _prev = _os.environ.get("MG_UCB_FR_NOINIT")
+    _os.environ["MG_UCB_FR_NOINIT"] = "1"
+    try:
+        out = fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR_B(
+            debug_print, render_mode, instance_seed, ml_model_name, domain_name,
+            observations, candidate_fault_modes, fault_rate_candidates, epsilon)
+    finally:
+        if _prev is None:
+            _os.environ.pop("MG_UCB_FR_NOINIT", None)
+        else:
+            _os.environ["MG_UCB_FR_NOINIT"] = _prev
+    out["budget_split"] = "ucb_noinit"
+    out["ucbfr_noinit"] = True
+    return out
 
 
 def fault_identification_non_deterministic_PO_unknown_fault_rate_BAI_FR(
