@@ -1,0 +1,18 @@
+PLOT PROVENANCE
+===============
+These plots were created by : C:\Users\User\AppData\Local\Temp\claude\C--Users-User-Desktop-rldx-repo-rldx-sifu\84415725-a15b-466d-ab0a-8f8d6d80ca11\scratchpad\build_mab_comparison.py
+Generated                   : 2026-10-31 22:27:30
+Command                     : C:/Users/User/AppData/Local/Temp/claude/C--Users-User-Desktop-rldx-repo-rldx-sifu/84415725-a15b-466d-ab0a-8f8d6d80ca11/scratchpad/build_mab_comparison.py
+
+Plots created in this folder (C:\Users\User\Desktop\rldx_repo\rldx-sifu\multi_arm_bandit_variants\bai_fr_sequential_halving\comparison_plots):
+  - table_FrozenLake.png
+  - table_Taxi.png
+  - table_MiniGrid_Empty.png
+  - table_MiniGrid_SimpleCrossing.png
+  - tables_all_domains.png
+  - mab_rank_vs_budget.png
+  - SUMMARY_mab_comparison.txt
+
+Input data read from:
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\total_budget_bruteforce_improvement
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\multi_arm_bandit_variants\bai_fr_sequential_halving\results
