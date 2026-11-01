@@ -2923,6 +2923,210 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_UGAPE_FR(
     return output
 
 
+def fault_identification_non_deterministic_PO_unknown_fault_rate_UGAPE_RANK(
+        debug_print, render_mode, instance_seed, ml_model_name, domain_name,
+        observations, candidate_fault_modes, fault_rate_candidates, epsilon):
+    """TOTAL-BUDGET RANKING-AWARE pure-exploration diagnoser (mg_method = 'ugape_rank').
+
+    Standalone sibling of ugape_fr. Same non-eliminating, interval-based machinery (Jeffreys point,
+    Wilson-based per-(f,r) log-interval [Lp-H, Lp+H], fault bounds U_f=max_r(Lp+H), L_f=max_r(Lp-H)),
+    same within-fault pick (optimistic rate, widest-Wilson-CI gap), same final scorer (max_r sum_g log
+    jeff). The ONLY difference is the SELECTION RULE:
+
+      ugape_fr : resolves the top-1 contest -- candidate J=argmin_f B_f vs its strongest challenger.
+      ugape_rank: resolves the most-uncertain ADJACENT PAIR anywhere in the current ranking.
+
+    Motivation: our metric is the RANK of the true fault, not top-1. ugape_fr concentrates budget on
+    the #1-vs-#2 contest; ugape_rank instead orders faults by point score and, for each adjacent pair
+    (k, k+1), measures order-uncertainty overlap = U_{k+1} - L_k (>0 => their order could still flip).
+    It samples the pair with the largest POSITION-WEIGHTED overlap (overlap / rank) -- the contested
+    top still dominates, but lower pairs get resolved once the top is settled, and the 1/rank weight
+    keeps budget off the (irrelevant) ordering of clear losers. Within the chosen pair, it samples the
+    MORE UNCERTAIN of the two (widest interval), identical to ugape_fr.
+
+    Budget via env MG_UGAPE_RANK_B. Fixed-budget stop (spent >= B). Preserves the fixed-budget design,
+    Jeffreys points, final scoring and brute-force comparability.
+    """
+    import os as _os
+    B = int(_os.environ.get("MG_UGAPE_RANK_B", "400000"))   # TOTAL simulation budget for this instance
+
+    diagnosis_seed = instance_seed + SIMULATION_OFFSET
+    policy = load_trained_model(domain_name, ml_model_name)
+    simulator = make_wrapped_env(domain_name, render_mode)
+    initial_obs, _ = simulator.reset(seed=instance_seed)
+    assert comparators[domain_name](observations[0], initial_obs)
+    comparator = comparators[domain_name]
+    t0 = time.time()
+
+    faults = list(candidate_fault_modes.keys())
+    rates = list(fault_rate_candidates)
+
+    gaps = []
+    last = 0
+    for i in range(1, len(observations)):
+        if observations[i] is None:
+            continue
+        gaps.append({"idx": len(gaps), "start": observations[last], "end": observations[i],
+                     "length": i - last, "seed": diagnosis_seed + last})
+        last = i
+    G = max(len(gaps), 1)
+    F = len(faults)
+    num_estimates = len(faults) * len(rates) * len(gaps)
+    total_budget = B
+    even_n = B / max(num_estimates, 1)
+    init_per_estimate = max(1, min(30, round(0.5 * even_n)))   # same as ugape_fr / ucb_fr_b
+    batch = 100 if even_n >= 200 else 20                        # same batch rule
+
+    acc = {(f, r, g["idx"]): {"hits": 0, "n": 0} for f in faults for r in rates for g in gaps}
+
+    def sample(f, r, gidx, k):
+        a = acc[(f, r, gidx)]; g = gaps[gidx]; fm = candidate_fault_modes[f]
+        base = g["seed"]; rng = random.Random()
+        for i in range(a["n"], a["n"] + k):
+            s = base + i * MAX_STATES
+            rng.seed(s)
+            nxt = execute_one_trace(g["start"], g["length"], fm, r, domain_name, s, rng,
+                                    simulator, policy, False)
+            if comparator(nxt, g["end"]):
+                a["hits"] += 1
+            a["n"] += 1
+
+    def jeff(a):
+        return (a["hits"] + 0.5) / (a["n"] + 1.0)
+
+    def wilson(a):
+        n = a["n"]
+        if n == 0:
+            return 1e-12, 1.0
+        z = 1.96; phat = a["hits"] / n; denom = 1.0 + z * z / n
+        center = (phat + z * z / (2.0 * n)) / denom
+        half = (z / denom) * math.sqrt(phat * (1.0 - phat) / n + z * z / (4.0 * n * n))
+        return max(center - half, 1e-12), min(center + half, 1.0)
+
+    def gap_logwidth(a):
+        lo, hi = wilson(a)
+        return math.log(max(hi, 1e-12)) - math.log(max(lo, 1e-12))
+
+    def pair_interval(f, r):
+        Lp = 0.0; sq = 0.0
+        for g in gaps:
+            a = acc[(f, r, g["idx"])]
+            Lp += math.log(jeff(a))
+            lo, hi = wilson(a)
+            h = 0.5 * (math.log(max(hi, 1e-12)) - math.log(max(lo, 1e-12)))
+            sq += h * h
+        H = math.sqrt(sq)
+        return Lp, Lp - H, Lp + H
+
+    _pi_cache = {}
+    def pi(f, r):
+        v = _pi_cache.get((f, r))
+        if v is None:
+            v = pair_interval(f, r); _pi_cache[(f, r)] = v
+        return v
+
+    def fault_bounds(f):
+        """-> (point score, L_f, U_f, rate_for_U). Score=max_r point; U_f=max_r upper; L_f=max_r lower."""
+        best_pt = -1e18; Lf = -1e18; Uf = -1e18; r_for_U = rates[0]
+        for r in rates:
+            pt, lo, hi = pi(f, r)
+            if pt > best_pt: best_pt = pt
+            if lo > Lf: Lf = lo
+            if hi > Uf: Uf = hi; r_for_U = r
+        return best_pt, Lf, Uf, r_for_U
+
+    def pick_gap(f, r):
+        return max((g["idx"] for g in gaps),
+                   key=lambda gi: gap_logwidth(acc[(f, r, gi)]))
+
+    # ---- init: seed every (fault, rate, gap); cap at remaining budget so init never exceeds B ----
+    spent = 0
+    for f in faults:
+        for r in rates:
+            for g in gaps:
+                k0 = min(init_per_estimate, total_budget - spent)
+                if k0 <= 0:
+                    break
+                sample(f, r, g["idx"], k0); spent += k0
+
+    # ---- RANKING-AWARE loop: resolve the most-uncertain adjacent pair across the whole ranking ----
+    picks = 0
+    stop_reason = "no_gaps" if not gaps else "budget"
+    while gaps and spent < total_budget:
+        bounds = {f: fault_bounds(f) for f in faults}      # (point, L, U, r_for_U)
+        order = sorted(faults, key=lambda f: bounds[f][0], reverse=True)   # by point score, best first
+        if len(order) < 2:
+            target = order[0]
+        else:
+            best_i = 0; best_pri = -1e18
+            for i in range(len(order) - 1):
+                hi = order[i]; lo = order[i + 1]
+                overlap = bounds[lo][2] - bounds[hi][1]        # U_lo - L_hi (>0 => order uncertain)
+                pri = overlap / (i + 1)                        # down-weight deeper pairs (1/rank)
+                if pri > best_pri:
+                    best_pri = pri; best_i = i
+            a = order[best_i]; b = order[best_i + 1]
+            # sample the MORE UNCERTAIN of the contested pair (widest interval U-L)
+            target = a if (bounds[a][2] - bounds[a][1]) >= (bounds[b][2] - bounds[b][1]) else b
+        r_target = bounds[target][3]
+        gidx = pick_gap(target, r_target)
+        k = min(batch, total_budget - spent)
+        if k <= 0:
+            break
+        sample(target, r_target, gidx, k); spent += k; picks += 1
+        _pi_cache.pop((target, r_target), None)   # only this arm's counts changed; invalidate it
+
+    # ---- final ranking: point best-rate logL (same scorer as brute/ucb_fr_b/ugape_fr) ----
+    log_prob_total_per_fault_and_rate = {
+        f: {r: sum(math.log(jeff(acc[(f, r, g["idx"])])) for g in gaps) for r in rates}
+        for f in faults}
+    best_rate_per_fault = {}; best_logL_per_fault = {}
+    for f in faults:
+        br = max(rates, key=lambda r: log_prob_total_per_fault_and_rate[f][r])
+        best_rate_per_fault[f] = br
+        best_logL_per_fault[f] = log_prob_total_per_fault_and_rate[f][br]
+    sorted_faults = sorted(best_logL_per_fault.items(), key=lambda x: x[1], reverse=True)
+    total_traces = sum(a["n"] for a in acc.values())
+    T = G
+
+    extra_output = ""
+    for fault, logL in sorted_faults:
+        extra_output += f"Fault: {fault}, logL: {logL:.6f}, Best Estimated Rate: {best_rate_per_fault[fault]}\n"
+
+    output = {
+        "diagnosis_time_sec": time.time() - t0,
+        "diagnosis_time_ms": (time.time() - t0) * 1000,
+        "avg_gap_time": 0.0,
+        "num_gaps": len(gaps),
+        "sorted_faults": sorted_faults,
+        "sorted_faults_with_exp_val": [(f, math.exp(L / T)) for f, L in sorted_faults],
+        "best_rate_per_fault": best_rate_per_fault,
+        "log_prob_total_per_fault_and_rate": log_prob_total_per_fault_and_rate,
+        "fault_rate_candidates": fault_rate_candidates,
+        "observations": observations,
+        "observations_len": len(observations),
+        "extra_output": extra_output,
+        "total_simulations": total_traces,
+        "ugaperank_total_traces": total_traces,
+        "ugaperank_total_budget": total_budget,
+        "ugaperank_num_faults": F,
+        "ugaperank_init_per_estimate": init_per_estimate,
+        "ugaperank_batch": batch,
+        "ugaperank_picks": picks,
+        "ugaperank_stop_reason": stop_reason,
+        # total-budget fields (parity with the other variants)
+        "budget_total_requested": B,
+        "budget_split": "ugape_rank",
+        "budget_per_estimate_n": init_per_estimate,
+        "budget_num_estimates": num_estimates,
+        "adaptive_total_calls": len(acc),
+        "adaptive_avg_real_tries": total_traces / len(acc) if acc else 0,
+    }
+    print(f"\n===== UGAPE_RANK done: B={B} init/est={init_per_estimate} picks={picks} "
+          f"traces={total_traces}/{total_budget} winner={sorted_faults[0][0]} =====")
+    return output
+
+
 def fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV(
         debug_print, render_mode, instance_seed, ml_model_name, domain_name,
         observations, candidate_fault_modes, fault_rate_candidates, epsilon):
