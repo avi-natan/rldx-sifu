@@ -3335,6 +3335,188 @@ def fault_identification_non_deterministic_PO_unknown_fault_rate_COCI_FR_B(
     return output
 
 
+def fault_identification_non_deterministic_PO_unknown_fault_rate_UGAPE_NO_INIT(
+        debug_print, render_mode, instance_seed, ml_model_name, domain_name,
+        observations, candidate_fault_modes, fault_rate_candidates, epsilon):
+    """TOTAL-BUDGET UGapE with NO init/warm-up (mg_method = 'ugape_no_init').
+
+    Standalone sibling of ugape_fr (does NOT modify ugape_fr). IDENTICAL in every respect
+    (non-eliminating interval machinery, gap-index J/challenger selection, within-fault optimistic-
+    rate + widest-CI-gap pick, final max_r sum_g log jeff scorer, cache) EXCEPT it skips the uniform
+    warm-up: init_per_estimate = 0, so the UGapE loop cold-starts from zero samples and allocates the
+    whole budget purely through the gap-index selection. At the start every (f,r,g) has n=0 -> every
+    fault has an identical, maximally-wide interval, so the loop explores via the challenger=argmax U_j
+    mechanism (unsampled faults carry the widest upper bound) before it can exploit.
+
+    Tests the 'ugape without init' meeting note. Budget via env MG_UGAPE_NO_INIT_B. Fixed-budget stop.
+    """
+    import os as _os
+    B = int(_os.environ.get("MG_UGAPE_NO_INIT_B", "400000"))   # TOTAL simulation budget for this instance
+
+    diagnosis_seed = instance_seed + SIMULATION_OFFSET
+    policy = load_trained_model(domain_name, ml_model_name)
+    simulator = make_wrapped_env(domain_name, render_mode)
+    initial_obs, _ = simulator.reset(seed=instance_seed)
+    assert comparators[domain_name](observations[0], initial_obs)
+    comparator = comparators[domain_name]
+    t0 = time.time()
+
+    faults = list(candidate_fault_modes.keys())
+    rates = list(fault_rate_candidates)
+
+    gaps = []
+    last = 0
+    for i in range(1, len(observations)):
+        if observations[i] is None:
+            continue
+        gaps.append({"idx": len(gaps), "start": observations[last], "end": observations[i],
+                     "length": i - last, "seed": diagnosis_seed + last})
+        last = i
+    G = max(len(gaps), 1)
+    F = len(faults)
+    num_estimates = len(faults) * len(rates) * len(gaps)
+    total_budget = B
+    even_n = B / max(num_estimates, 1)
+    init_per_estimate = 0                               # NO INIT -- the whole point of this variant
+    batch = 100 if even_n >= 200 else 20                # same batch rule as ugape_fr
+
+    acc = {(f, r, g["idx"]): {"hits": 0, "n": 0} for f in faults for r in rates for g in gaps}
+
+    def sample(f, r, gidx, k):
+        a = acc[(f, r, gidx)]; g = gaps[gidx]; fm = candidate_fault_modes[f]
+        base = g["seed"]; rng = random.Random()
+        for i in range(a["n"], a["n"] + k):
+            s = base + i * MAX_STATES
+            rng.seed(s)
+            nxt = execute_one_trace(g["start"], g["length"], fm, r, domain_name, s, rng,
+                                    simulator, policy, False)
+            if comparator(nxt, g["end"]):
+                a["hits"] += 1
+            a["n"] += 1
+
+    def jeff(a):
+        return (a["hits"] + 0.5) / (a["n"] + 1.0)
+
+    def wilson(a):
+        n = a["n"]
+        if n == 0:
+            return 1e-12, 1.0
+        z = 1.96; phat = a["hits"] / n; denom = 1.0 + z * z / n
+        center = (phat + z * z / (2.0 * n)) / denom
+        half = (z / denom) * math.sqrt(phat * (1.0 - phat) / n + z * z / (4.0 * n * n))
+        return max(center - half, 1e-12), min(center + half, 1.0)
+
+    def gap_logwidth(a):
+        lo, hi = wilson(a)
+        return math.log(max(hi, 1e-12)) - math.log(max(lo, 1e-12))
+
+    def pair_interval(f, r):
+        Lp = 0.0; sq = 0.0
+        for g in gaps:
+            a = acc[(f, r, g["idx"])]
+            Lp += math.log(jeff(a))
+            lo, hi = wilson(a)
+            h = 0.5 * (math.log(max(hi, 1e-12)) - math.log(max(lo, 1e-12)))
+            sq += h * h
+        H = math.sqrt(sq)
+        return Lp, Lp - H, Lp + H
+
+    _pi_cache = {}
+    def pi(f, r):
+        v = _pi_cache.get((f, r))
+        if v is None:
+            v = pair_interval(f, r); _pi_cache[(f, r)] = v
+        return v
+
+    def fault_bounds(f):
+        best_pt = -1e18; Lf = -1e18; Uf = -1e18; r_for_U = rates[0]
+        for r in rates:
+            pt, lo, hi = pi(f, r)
+            if pt > best_pt: best_pt = pt
+            if lo > Lf: Lf = lo
+            if hi > Uf: Uf = hi; r_for_U = r
+        return best_pt, Lf, Uf, r_for_U
+
+    def pick_gap(f, r):
+        return max((g["idx"] for g in gaps),
+                   key=lambda gi: gap_logwidth(acc[(f, r, gi)]))
+
+    def gap_index(f, bounds, Us):
+        best_other = max((Us[j] for j in faults if j != f), default=-1e18)
+        return best_other - bounds[f][1]
+
+    # ---- NO INIT: skip the warm-up entirely (init_per_estimate == 0) ----
+    spent = 0
+
+    # ---- UGapE loop (cold-start): non-eliminating; resolve the contested top of the ranking ----
+    picks = 0
+    stop_reason = "no_gaps" if not gaps else "budget"
+    while gaps and spent < total_budget:
+        bounds = {f: fault_bounds(f) for f in faults}      # (point, L, U, r_for_U)
+        Us = {f: bounds[f][2] for f in faults}
+        J = min(faults, key=lambda f: gap_index(f, bounds, Us))
+        challenger = max((j for j in faults if j != J), key=lambda j: Us[j]) if F > 1 else None
+        target = (J if challenger is None or
+                  (bounds[J][2] - bounds[J][1]) >= (bounds[challenger][2] - bounds[challenger][1])
+                  else challenger)
+        r_target = bounds[target][3]
+        gidx = pick_gap(target, r_target)
+        k = min(batch, total_budget - spent)
+        if k <= 0:
+            break
+        sample(target, r_target, gidx, k); spent += k; picks += 1
+        _pi_cache.pop((target, r_target), None)
+
+    # ---- final ranking: point best-rate logL (same scorer as ugape_fr) ----
+    log_prob_total_per_fault_and_rate = {
+        f: {r: sum(math.log(jeff(acc[(f, r, g["idx"])])) for g in gaps) for r in rates}
+        for f in faults}
+    best_rate_per_fault = {}; best_logL_per_fault = {}
+    for f in faults:
+        br = max(rates, key=lambda r: log_prob_total_per_fault_and_rate[f][r])
+        best_rate_per_fault[f] = br
+        best_logL_per_fault[f] = log_prob_total_per_fault_and_rate[f][br]
+    sorted_faults = sorted(best_logL_per_fault.items(), key=lambda x: x[1], reverse=True)
+    total_traces = sum(a["n"] for a in acc.values())
+    T = G
+
+    extra_output = ""
+    for fault, logL in sorted_faults:
+        extra_output += f"Fault: {fault}, logL: {logL:.6f}, Best Estimated Rate: {best_rate_per_fault[fault]}\n"
+
+    output = {
+        "diagnosis_time_sec": time.time() - t0,
+        "diagnosis_time_ms": (time.time() - t0) * 1000,
+        "avg_gap_time": 0.0,
+        "num_gaps": len(gaps),
+        "sorted_faults": sorted_faults,
+        "sorted_faults_with_exp_val": [(f, math.exp(L / T)) for f, L in sorted_faults],
+        "best_rate_per_fault": best_rate_per_fault,
+        "log_prob_total_per_fault_and_rate": log_prob_total_per_fault_and_rate,
+        "fault_rate_candidates": fault_rate_candidates,
+        "observations": observations,
+        "observations_len": len(observations),
+        "extra_output": extra_output,
+        "total_simulations": total_traces,
+        "ugapeni_total_traces": total_traces,
+        "ugapeni_total_budget": total_budget,
+        "ugapeni_num_faults": F,
+        "ugapeni_init_per_estimate": init_per_estimate,
+        "ugapeni_batch": batch,
+        "ugapeni_picks": picks,
+        "ugapeni_stop_reason": stop_reason,
+        "budget_total_requested": B,
+        "budget_split": "ugape_noinit",
+        "budget_per_estimate_n": init_per_estimate,
+        "budget_num_estimates": num_estimates,
+        "adaptive_total_calls": len(acc),
+        "adaptive_avg_real_tries": total_traces / len(acc) if acc else 0,
+    }
+    print(f"\n===== UGAPE_NO_INIT done: B={B} init/est=0 picks={picks} "
+          f"traces={total_traces}/{total_budget} winner={sorted_faults[0][0]} =====")
+    return output
+
+
 def fault_identification_non_deterministic_PO_unknown_fault_rate_UCBV(
         debug_print, render_mode, instance_seed, ml_model_name, domain_name,
         observations, candidate_fault_modes, fault_rate_candidates, epsilon):
