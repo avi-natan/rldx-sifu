@@ -1,0 +1,10 @@
+ugape_no_init (UGapE, no warm-up) -- MEDIUM-COMPOSITE run | pull manifest
+Launched: 2026-11-01 | ssh bgu | branch new-master-ai @ 588e1b6
+
+WHAT: standalone ugape_fr with init_per_estimate=0 (cold-start). MEDIUM-COMPOSITE matched 1:1 to
+  ugape_fr/ugape_rank/coci: FL=HARD, Taxi=EASY(v3_easy), MiniGrids=MEDIUM(N1=2 N2=4 N3=2).
+  4 domains x 5 budgets (200k..3.2M)=20 jobs. eps 0.04 -ufr. Full parallelism. Launcher: launch_ugape_no_init.sh
+OUTPUT: multi_arm_bandit_variants/ugape_no_init/results_medium/<domain>/B<budget>/{xlsx,logs}
+JOB IDS: 23788400 - 23788419.
+MONITOR: ssh bgu 'squeue -u $USER -h -r -o %j | grep -c UN_'
+PULL: ssh bgu 'cd ~/rldx_repo/rldx-sifu/multi_arm_bandit_variants/ugape_no_init/results_medium && tar czf - .' | tar xzf - -C "C:/Users/User/Desktop/rldx_repo/rldx-sifu/multi_arm_bandit_variants/ugape_no_init/results_medium/"
