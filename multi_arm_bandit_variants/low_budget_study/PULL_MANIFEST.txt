@@ -1,0 +1,20 @@
+LOW-BUDGET study: brute_even vs ucb_fr_b_noinit at very low budgets | pull manifest
+Launched: 2026-11-01 ~06:30 cluster | ssh bgu | branch new-master-ai @ 2b4de41
+
+WHAT: does no-init UCB beat brute at tiny budgets? brute_even (no C) + ucb_fr_b_noinit (both C
+  1.4142 & 2.0), budgets 100k 50k 25k 10k 5k, 4 domains MEDIUM-COMPOSITE (FL=hard, Taxi=easy(v3_easy),
+  MiniGrids=medium N1=2 N2=4 N3=2). eps 0.04, -ufr. Full-parallelism batched (FL/TX 0-49, MG 0-38).
+  Launcher: launch_low_budget.sh. 20 brute array jobs + 40 noinit array jobs = 60.
+
+OUTPUT (cluster tree == here):
+  multi_arm_bandit_variants/low_budget_study/brute_even/<domain>/B<budget>/{xlsx,logs}
+  multi_arm_bandit_variants/low_budget_study/ucb_fr_b_noinit/<domain>/<c1_414|c2_0>_B<budget>/{xlsx,logs}
+
+CAVEAT: brute_even floors at 1 sim/estimate, so on high-gap instances (SimpleCrossing) its REALIZED
+  total_simulations can exceed the nominal low B. ucb_fr_b_noinit respects B exactly. Compare on
+  realized total_simulations (reported per row), not just nominal B.
+
+MONITOR: ssh bgu 'squeue -u $USER -h -r -o %j | grep -cE "BE_|NI_"'
+PULL:
+  ssh bgu 'cd ~/rldx_repo/rldx-sifu/multi_arm_bandit_variants/low_budget_study && tar czf - .' \
+    | tar xzf - -C "C:/Users/User/Desktop/rldx_repo/rldx-sifu/multi_arm_bandit_variants/low_budget_study/"
