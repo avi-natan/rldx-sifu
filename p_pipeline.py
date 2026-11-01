@@ -27,7 +27,8 @@ from p_diagnosers import diagnosers, SIF, SN, W, SIFU, SIFU2, SIFU3, SIFU4, SIFU
     fault_identification_non_deterministic_PO_unknown_fault_rate_BAI_FR, \
     fault_identification_non_deterministic_PO_unknown_fault_rate_UGAPE_FR, \
     fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR_B_NOINIT, \
-    fault_identification_non_deterministic_PO_unknown_fault_rate_UGAPE_RANK
+    fault_identification_non_deterministic_PO_unknown_fault_rate_UGAPE_RANK, \
+    fault_identification_non_deterministic_PO_unknown_fault_rate_COCI_FR_B
 from p_executor import execute
 
 
@@ -862,7 +863,8 @@ def run_NON_DETERMINSTIC_single_experiment_PO(domain_name,
                 "bai_fr": fault_identification_non_deterministic_PO_unknown_fault_rate_BAI_FR,
                 "ugape_fr": fault_identification_non_deterministic_PO_unknown_fault_rate_UGAPE_FR,
                 "ucb_fr_b_noinit": fault_identification_non_deterministic_PO_unknown_fault_rate_UCB_FR_B_NOINIT,
-                "ugape_rank": fault_identification_non_deterministic_PO_unknown_fault_rate_UGAPE_RANK}
+                "ugape_rank": fault_identification_non_deterministic_PO_unknown_fault_rate_UGAPE_RANK,
+                "coci_fr_b": fault_identification_non_deterministic_PO_unknown_fault_rate_COCI_FR_B}
     if unknown_fault_rate and use_racing:
         raw_output = fault_identification_non_deterministic_PO_unknown_fault_rate_RACING(
             debug_print=debug_print,
