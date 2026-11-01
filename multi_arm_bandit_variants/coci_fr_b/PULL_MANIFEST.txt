@@ -1,0 +1,20 @@
+coci_fr_b (COCI-style decision-critical) -- MEDIUM-COMPOSITE run | pull manifest
+Launched: 2026-11-01 | ssh bgu | branch new-master-ai @ 19b6b2d (coci_fr_b)
+
+WHAT: COCI/CLUCB-adapted diagnoser. Conservative simultaneous bounds (S-=max_r sum log l,
+  S+=max_r sum log u); samples the decision-critical triple for the highest ambiguous rank
+  boundary (leader's pessimistic-rate gaps + challenger's optimistic-rate gaps, widest-CI among
+  them). Non-eliminating, ranking-aware, fixed-budget. MEDIUM-COMPOSITE, matched 1:1 to ugape_fr/
+  ugape_rank: FL=HARD, Taxi=EASY(v3_easy), MiniGrids=MEDIUM(N1=2 N2=4 N3=2). 4 domains x 5 budgets
+  (200k..3.2M) = 20 batched array jobs. eps 0.04 -ufr. Full parallelism (FL/TX 0-49, MG 0-38).
+  Launcher: launch_coci.sh. Budget env MG_COCI_B.
+
+OUTPUT: multi_arm_bandit_variants/coci_fr_b/results_medium/<domain>/B<budget>/{xlsx,logs}
+JOB IDS: 20 array jobs, spanning 23759840 - 23759859.
+MATCHED SOURCES (same as ugape): FL -> total_budget_bruteforce_improvement ; Taxi -> ..._easy_benchmark ;
+  MiniGrids -> ..._medium_benchmark. Compare vs ugape_fr, ugape_rank, brute_even, ucb_fr_b.
+MONITOR: ssh bgu 'squeue -u $USER -h -r -o %j | grep -c CO_'   (0 => done)
+PULL:
+  ssh bgu 'cd ~/rldx_repo/rldx-sifu/multi_arm_bandit_variants/coci_fr_b/results_medium && tar czf - .' \
+    | tar xzf - -C "C:/Users/User/Desktop/rldx_repo/rldx-sifu/multi_arm_bandit_variants/coci_fr_b/results_medium/"
+EXPECTED rows/cell: FL 495, Taxi 500, MG-Empty 390, MG-Crossing 390.
