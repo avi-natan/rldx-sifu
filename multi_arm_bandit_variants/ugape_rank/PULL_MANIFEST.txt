@@ -1,0 +1,24 @@
+ugape_rank (ranking-aware UGapE) -- MEDIUM-COMPOSITE run | pull manifest
+Launched: 2026-11-01 | ssh bgu | branch new-master-ai @ 0e499f3 (ugape_rank)
+
+WHAT: standalone ranking-aware UGapE diagnoser. Same machinery/scorer as ugape_fr; selection resolves
+  the most-uncertain ADJACENT PAIR across the whole ranking (overlap/rank weighted), not just top-1.
+  Targets the rank-of-true-fault metric (GPT review issue #3). MEDIUM-COMPOSITE, matched 1:1 to ugape_fr:
+    FrozenLake=HARD, Taxi=EASY(v3_easy), MiniGrids=MEDIUM(N1=2 N2=4 N3=2). 4 domains x 5 budgets
+    (200k..3.2M) = 20 batched array jobs. eps 0.04 -ufr. Full parallelism (FL/TX 0-49, MG 0-38).
+  Launcher: launch_ugape_rank.sh. Budget env MG_UGAPE_RANK_B.
+
+OUTPUT (cluster tree == here):
+  multi_arm_bandit_variants/ugape_rank/results_medium/<domain>/B<budget>/{xlsx,logs}
+
+JOB IDS: 20 array jobs, globally-assigned, spanning 23758887 - 23759005.
+
+MATCHED INCUMBENT SOURCES (same as ugape_fr): FL -> total_budget_bruteforce_improvement ;
+  Taxi -> ..._easy_benchmark ; MiniGrids -> ..._medium_benchmark. Compare primarily vs ugape_fr
+  (multi_arm_bandit_variants/ugape_fr_gap_based/results_medium), and vs brute_even/ucb_fr_b.
+
+MONITOR: ssh bgu 'squeue -u $USER -h -r -o %j | grep -c UR'   (0 => done)
+PULL:
+  ssh bgu 'cd ~/rldx_repo/rldx-sifu/multi_arm_bandit_variants/ugape_rank/results_medium && tar czf - .' \
+    | tar xzf - -C "C:/Users/User/Desktop/rldx_repo/rldx-sifu/multi_arm_bandit_variants/ugape_rank/results_medium/"
+EXPECTED rows/cell: FL 495, Taxi 500, MG-Empty 390, MG-Crossing 390.
