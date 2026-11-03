@@ -1,0 +1,15 @@
+PLOT PROVENANCE
+===============
+These plots were created by : C:\Users\User\AppData\Local\Temp\claude\830f5e88f3fbc6eb\84415725-a15b-466d-ab0a-8f8d6d80ca11\scratchpad\build_noinit_cmp.py
+Generated                   : 2026-11-03 10:40:28
+Command                     : C:/Users/User/AppData/Local/Temp/claude/830f5e88f3fbc6eb/84415725-a15b-466d-ab0a-8f8d6d80ca11/scratchpad/build_noinit_cmp.py
+
+Plots created in this folder (C:\Users\User\Desktop\rldx_repo\rldx-sifu\multi_arm_bandit_variants\ugape_no_init\comparison_medium):
+  - table_noinit_vs_init_vs_brute.png
+  - plot_noinit_vs_init_vs_brute.png
+  - SUMMARY_noinit.txt
+
+Input data read from:
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\total_budget_bruteforce_improvement_medium_benchmark\brute_even
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\multi_arm_bandit_variants\ugape_fr_gap_based\results_medium
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\multi_arm_bandit_variants\ugape_no_init\results_medium

@@ -1,0 +1,16 @@
+PLOT PROVENANCE
+===============
+These plots were created by : C:\Users\User\AppData\Local\Temp\claude\C--Users-User-Desktop-rldx-repo-rldx-sifu\84415725-a15b-466d-ab0a-8f8d6d80ca11\scratchpad\build_noinit_vs_brute.py
+Generated                   : 2026-11-01 08:01:37
+Command                     : C:/Users/User/AppData/Local/Temp/claude/C--Users-User-Desktop-rldx-repo-rldx-sifu/84415725-a15b-466d-ab0a-8f8d6d80ca11/scratchpad/build_noinit_vs_brute.py
+
+Plots created in this folder (C:\Users\User\Desktop\rldx_repo\rldx-sifu\multi_arm_bandit_variants\ucb_fr_b_noinit\comparison_vs_brute_even_medium):
+  - tables_all_domains.png
+  - rank_vs_nominal_budget.png
+  - rank_vs_realized_sims.png
+  - SUMMARY_noinit_vs_brute.txt
+
+Input data read from:
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\total_budget_bruteforce_improvement_medium_benchmark\brute_even
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\multi_arm_bandit_variants\ucb_fr_b_noinit\results_medium
+  - C:\Users\User\Desktop\rldx_repo\rldx-sifu\multi_arm_bandit_variants\ucb_fr_b_noinit\results_low_budget
